@@ -1,20 +1,13 @@
-import nodemailer, { Transporter } from "nodemailer";
+import { Resend } from "resend";
 import { env } from "../config/env";
 
-const isConfigured = Boolean(env.smtpHost && env.smtpUser && env.smtpPass);
+const isConfigured = Boolean(env.resendApiKey);
 
-const transporter: Transporter | null = isConfigured
-  ? nodemailer.createTransport({
-      host: env.smtpHost,
-      port: env.smtpPort,
-      secure: env.smtpPort === 465,
-      auth: { user: env.smtpUser, pass: env.smtpPass },
-    })
-  : null;
+const resend = isConfigured ? new Resend(env.resendApiKey) : null;
 
 if (!isConfigured) {
   console.warn(
-    "[mailer] SMTP not configured (SMTP_HOST/SMTP_USER/SMTP_PASS missing) — emails will be logged to the console instead of sent."
+    "[mailer] RESEND_API_KEY not configured — emails will be logged to the console instead of sent."
   );
 }
 
@@ -26,16 +19,20 @@ export interface MailOptions {
 }
 
 export async function sendMail(options: MailOptions): Promise<void> {
-  if (!transporter) {
+  if (!resend) {
     console.info(`[mailer] (no-op) To: ${options.to} | Subject: ${options.subject}\n${options.text ?? options.html}`);
     return;
   }
 
-  await transporter.sendMail({
-    from: env.smtpFrom,
+  const { error } = await resend.emails.send({
+    from: env.emailFrom,
     to: options.to,
     subject: options.subject,
     html: options.html,
     text: options.text,
   });
+
+  if (error) {
+    throw new Error(`Resend failed to send email: ${error.message}`);
+  }
 }

@@ -17,11 +17,8 @@ export const env = {
 
   frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:3000",
 
-  smtpHost: process.env.SMTP_HOST,
-  smtpPort: Number(process.env.SMTP_PORT ?? 587),
-  smtpUser: process.env.SMTP_USER,
-  smtpPass: process.env.SMTP_PASS,
-  smtpFrom: process.env.SMTP_FROM ?? "Funlane Travel <no-reply@funlane.com>",
+  resendApiKey: process.env.RESEND_API_KEY,
+  emailFrom: process.env.EMAIL_FROM ?? "Funlane Travel <no-reply@funlane.com>",
 };
 
 export const isProduction = env.nodeEnv === "production";

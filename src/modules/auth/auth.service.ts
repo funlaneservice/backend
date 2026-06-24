@@ -17,6 +17,14 @@ function toPublicUser(user: { id: string; email: string; name: string; role: str
   return { id: user.id, email: user.email, name: user.name, role: user.role };
 }
 
+async function sendMailSafely(send: () => Promise<void>): Promise<void> {
+  try {
+    await send();
+  } catch (err) {
+    console.error("[auth] failed to send email:", err);
+  }
+}
+
 async function issueVerificationToken(userId: string): Promise<string> {
   await prisma.verificationToken.updateMany({
     where: { userId, type: "EMAIL_VERIFICATION", usedAt: null },
@@ -65,7 +73,7 @@ export async function register(input: RegisterInput) {
   });
 
   const rawToken = await issueVerificationToken(user.id);
-  await sendVerificationEmail(user.email, user.name, rawToken);
+  await sendMailSafely(() => sendVerificationEmail(user.email, user.name, rawToken));
 
   return {
     message: "Registration successful. Check your email to verify your account.",
@@ -112,7 +120,7 @@ export async function resendVerification(input: ResendVerificationInput) {
   const user = await prisma.user.findUnique({ where: { email: input.email } });
   if (user && !user.emailVerifiedAt) {
     const rawToken = await issueVerificationToken(user.id);
-    await sendVerificationEmail(user.email, user.name, rawToken);
+    await sendMailSafely(() => sendVerificationEmail(user.email, user.name, rawToken));
   }
 
   return { message: "If that email exists and isn't verified yet, a verification link has been sent." };
@@ -122,7 +130,7 @@ export async function forgotPassword(input: ForgotPasswordInput) {
   const user = await prisma.user.findUnique({ where: { email: input.email } });
   if (user) {
     const rawToken = await issuePasswordResetToken(user.id);
-    await sendPasswordResetEmail(user.email, user.name, rawToken);
+    await sendMailSafely(() => sendPasswordResetEmail(user.email, user.name, rawToken));
   }
 
   return { message: "If that email exists, a password reset link has been sent." };
