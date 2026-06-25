@@ -36,3 +36,11 @@ export async function sendMail(options: MailOptions): Promise<void> {
     throw new Error(`Resend failed to send email: ${error.message}`);
   }
 }
+
+export async function sendMailSafely(send: () => Promise<void>): Promise<void> {
+  try {
+    await send();
+  } catch (err) {
+    console.error("[mailer] failed to send email:", err);
+  }
+}

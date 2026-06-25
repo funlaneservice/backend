@@ -7,6 +7,12 @@ import {
   resetPasswordSchema,
   verifyEmailSchema,
 } from "../modules/auth/auth.schema";
+import {
+  adminLoginSchema,
+  bootstrapAdminSchema,
+  createAdminSchema,
+} from "../modules/admin/admin.schema";
+import { agentLoginSchema, createAgentSchema } from "../modules/agent/agent.schema";
 
 // `any` param sidesteps a TS instantiation blowup (multi-minute OOM) inferring zodToJsonSchema's generic return type against these chained schemas.
 function toSchema(zodSchema: any): Record<string, unknown> {
@@ -75,6 +81,8 @@ export const openapiDocument = {
   tags: [
     { name: "Health", description: "Service health check" },
     { name: "Auth", description: "Registration, login, email verification, and password reset" },
+    { name: "Admin", description: "Admin login and admin account creation" },
+    { name: "Agent", description: "Agent login and admin-driven agent onboarding" },
   ],
   components: {
     securitySchemes: {
@@ -101,6 +109,36 @@ export const openapiDocument = {
       ResendVerificationRequest: toSchema(resendVerificationSchema),
       ForgotPasswordRequest: toSchema(forgotPasswordSchema),
       ResetPasswordRequest: toSchema(resetPasswordSchema),
+      AdminLoginRequest: toSchema(adminLoginSchema),
+      AdminLoginResponse: {
+        type: "object",
+        properties: { admin: ref("PublicUser"), token: { type: "string" } },
+        required: ["admin", "token"],
+      },
+      BootstrapAdminRequest: toSchema(bootstrapAdminSchema),
+      BootstrapAdminResponse: {
+        type: "object",
+        properties: { admin: ref("PublicUser"), token: { type: "string" } },
+        required: ["admin", "token"],
+      },
+      CreateAdminRequest: toSchema(createAdminSchema),
+      CreateAdminResponse: {
+        type: "object",
+        properties: { admin: ref("PublicUser") },
+        required: ["admin"],
+      },
+      AgentLoginRequest: toSchema(agentLoginSchema),
+      AgentLoginResponse: {
+        type: "object",
+        properties: { agent: ref("PublicUser"), token: { type: "string" } },
+        required: ["agent", "token"],
+      },
+      CreateAgentRequest: toSchema(createAgentSchema),
+      CreateAgentResponse: {
+        type: "object",
+        properties: { agent: ref("PublicUser") },
+        required: ["agent"],
+      },
     },
   },
   paths: {
@@ -210,6 +248,87 @@ export const openapiDocument = {
           "200": { description: "Current user", ...jsonContent(ref("PublicUser")) },
           "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
           "404": { description: "User not found", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/admin/auth/login": {
+      post: {
+        tags: ["Admin"],
+        summary: "Log in to an admin account",
+        description: "Fails with 403 if the account exists but does not have the ADMIN role.",
+        requestBody: { required: true, ...jsonContent(ref("AdminLoginRequest")) },
+        responses: {
+          "200": { description: "Login successful", ...jsonContent(ref("AdminLoginResponse")) },
+          "400": responses.validation,
+          "401": { description: "Invalid email or password", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Account is not an admin", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/admin/auth/bootstrap": {
+      post: {
+        tags: ["Admin"],
+        summary: "Create the first admin account",
+        description:
+          "One-time bootstrap: only succeeds while zero ADMIN accounts exist. Once an admin exists, use POST /admin/admins (authenticated as an admin) to create more.",
+        requestBody: { required: true, ...jsonContent(ref("BootstrapAdminRequest")) },
+        responses: {
+          "201": { description: "Admin created", ...jsonContent(ref("BootstrapAdminResponse")) },
+          "400": responses.validation,
+          "403": { description: "An admin account already exists", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "An account with this email already exists", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/admin/admins": {
+      post: {
+        tags: ["Admin"],
+        summary: "Create a new admin account",
+        description: "Requires an authenticated ADMIN. The new admin's email is marked verified immediately (no verification email flow).",
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, ...jsonContent(ref("CreateAdminRequest")) },
+        responses: {
+          "201": { description: "Admin created", ...jsonContent(ref("CreateAdminResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "An account with this email already exists", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/agent/auth/login": {
+      post: {
+        tags: ["Agent"],
+        summary: "Log in to an agent account",
+        description: "Fails with 403 if the account exists but does not have the AGENT role.",
+        requestBody: { required: true, ...jsonContent(ref("AgentLoginRequest")) },
+        responses: {
+          "200": { description: "Login successful", ...jsonContent(ref("AgentLoginResponse")) },
+          "400": responses.validation,
+          "401": { description: "Invalid email or password", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Account is not an agent", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/admin/agents": {
+      post: {
+        tags: ["Agent"],
+        summary: "Onboard a new agent",
+        description:
+          "Requires an authenticated ADMIN. Creates the agent with a random unusable password and emails them an invite link (reusing the password-reset token flow) to set their own password via POST /auth/reset-password.",
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, ...jsonContent(ref("CreateAgentRequest")) },
+        responses: {
+          "201": { description: "Agent created and invited", ...jsonContent(ref("CreateAgentResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "An account with this email already exists", ...jsonContent(ref("ErrorResponse")) },
           "500": responses.serverError,
         },
       },

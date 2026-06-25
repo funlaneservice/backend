@@ -1,8 +1,10 @@
 import { prisma } from "../../lib/prisma";
+import { sendMailSafely } from "../../lib/mailer";
+import { issuePasswordResetToken, issueVerificationToken } from "../../lib/verificationTokens";
 import { ApiError } from "../../utils/ApiError";
 import { signToken } from "../../utils/jwt";
 import { comparePassword, hashPassword } from "../../utils/password";
-import { generateToken, hashToken, TOKEN_TTL_MS } from "../../utils/verificationToken";
+import { hashToken } from "../../utils/verificationToken";
 import { sendPasswordResetEmail, sendVerificationEmail } from "./auth.mailer";
 import {
   ForgotPasswordInput,
@@ -15,50 +17,6 @@ import {
 
 function toPublicUser(user: { id: string; email: string; name: string; role: string }) {
   return { id: user.id, email: user.email, name: user.name, role: user.role };
-}
-
-async function sendMailSafely(send: () => Promise<void>): Promise<void> {
-  try {
-    await send();
-  } catch (err) {
-    console.error("[auth] failed to send email:", err);
-  }
-}
-
-async function issueVerificationToken(userId: string): Promise<string> {
-  await prisma.verificationToken.updateMany({
-    where: { userId, type: "EMAIL_VERIFICATION", usedAt: null },
-    data: { usedAt: new Date() },
-  });
-
-  const { raw, hash } = generateToken();
-  await prisma.verificationToken.create({
-    data: {
-      userId,
-      tokenHash: hash,
-      type: "EMAIL_VERIFICATION",
-      expiresAt: new Date(Date.now() + TOKEN_TTL_MS.EMAIL_VERIFICATION),
-    },
-  });
-  return raw;
-}
-
-async function issuePasswordResetToken(userId: string): Promise<string> {
-  await prisma.verificationToken.updateMany({
-    where: { userId, type: "PASSWORD_RESET", usedAt: null },
-    data: { usedAt: new Date() },
-  });
-
-  const { raw, hash } = generateToken();
-  await prisma.verificationToken.create({
-    data: {
-      userId,
-      tokenHash: hash,
-      type: "PASSWORD_RESET",
-      expiresAt: new Date(Date.now() + TOKEN_TTL_MS.PASSWORD_RESET),
-    },
-  });
-  return raw;
 }
 
 export async function register(input: RegisterInput) {
