@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { ApiError } from "../../utils/ApiError";
 import { asyncHandler } from "../../utils/asyncHandler";
+import { sendResponse } from "../../utils/apiResponse";
 import * as authService from "./auth.service";
 import {
   forgotPasswordSchema,
@@ -14,37 +15,37 @@ import {
 export const registerHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = registerSchema.parse(req.body);
   const result = await authService.register(input);
-  res.status(201).json(result);
+  sendResponse(res, 201, result);
 });
 
 export const loginHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = loginSchema.parse(req.body);
   const result = await authService.login(input);
-  res.status(200).json(result);
+  sendResponse(res, 200, result);
 });
 
 export const verifyEmailHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = verifyEmailSchema.parse(req.body);
   const result = await authService.verifyEmail(input);
-  res.status(200).json(result);
+  sendResponse(res, 200, result);
 });
 
 export const resendVerificationHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = resendVerificationSchema.parse(req.body);
   const result = await authService.resendVerification(input);
-  res.status(200).json(result);
+  sendResponse(res, 200, result);
 });
 
 export const forgotPasswordHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = forgotPasswordSchema.parse(req.body);
   const result = await authService.forgotPassword(input);
-  res.status(200).json(result);
+  sendResponse(res, 200, result);
 });
 
 export const resetPasswordHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = resetPasswordSchema.parse(req.body);
   const result = await authService.resetPassword(input);
-  res.status(200).json(result);
+  sendResponse(res, 200, result);
 });
 
 export const meHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -52,5 +53,5 @@ export const meHandler = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError(401, "Not authenticated");
   }
   const user = await authService.getUserById(req.user.userId);
-  res.status(200).json(user);
+  sendResponse(res, 200, user);
 });
