@@ -23,34 +23,197 @@ enum VerificationTokenType {
   PASSWORD_RESET
 }
 
+enum BudgetTier {
+  ECONOMY
+  PREMIUM_ECONOMY
+  BUSINESS
+  FIRST
+}
+
+enum RequestStatus {
+  PENDING
+  OPTIONS_SENT
+  APPROVED_LOCKED
+  ISSUED
+  COMPLETED
+  CANCELLED
+}
+
+enum WalletTransactionType {
+  TOPUP
+  LOCK
+  CAPTURE
+  RELEASE
+  PAYOUT_DEBIT
+  ADJUSTMENT
+}
+
+enum PaystackEventStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+}
+
+enum PayoutStatus {
+  NOT_APPLICABLE
+  PENDING
+  SUCCESS
+  FAILED
+}
+
 model User {
-  id                String    @id @default(uuid())
-  email             String    @unique
+  id                String     @id @default(uuid())
+  email             String     @unique
   password          String
   name              String
   phone             String
-  role              Role      @default(CLIENT)
+  role              Role       @default(CLIENT)
   status            UserStatus @default(ACTIVE)
   emailVerifiedAt   DateTime?
   passwordChangedAt DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
   verificationTokens VerificationToken[]
+  wallet             Wallet?
+  travelRequests     TravelRequest[]     @relation("ClientRequests")
+  assignedRequests   TravelRequest[]     @relation("AgentRequests")
 
   @@map("users")
 }
 
 model VerificationToken {
-  id        String                 @id @default(uuid())
+  id        String                @id @default(uuid())
   userId    String
-  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String                 @unique
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String                @unique
   type      VerificationTokenType
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime               @default(now())
+  createdAt DateTime              @default(now())
 
   @@index([userId])
   @@map("verification_tokens")
+}
+
+model Wallet {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance       Int      @default(0)
+  lockedBalance Int      @default(0)
+  version       Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  transactions WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id           String                @id @default(uuid())
+  walletId     String
+  wallet       Wallet                @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  type         WalletTransactionType
+  amount       Int
+  balanceAfter Int
+  lockedAfter  Int
+  reference    String                @unique
+  requestId    String?
+  request      TravelRequest?        @relation(fields: [requestId], references: [id])
+  metadata     Json?
+  createdAt    DateTime              @default(now())
+
+  @@index([walletId])
+  @@index([requestId])
+  @@map("wallet_transactions")
+}
+
+model TravelRequest {
+  id                  String        @id @default(uuid())
+  clientId            String
+  client              User          @relation("ClientRequests", fields: [clientId], references: [id])
+  assignedAgentId     String?
+  assignedAgent       User?         @relation("AgentRequests", fields: [assignedAgentId], references: [id])
+  status              RequestStatus @default(PENDING)
+  budgetTier          BudgetTier
+  preferredAirline    String?
+  preferredTime       String?
+  departureDate       DateTime
+  returnDate          DateTime?
+  origin              String
+  destination         String
+  rejectionReason     String?
+  rejectedAt          DateTime?
+  approvedOptionId    String?       @unique
+  approvedOption      QuoteOption?  @relation("ApprovedOption", fields: [approvedOptionId], references: [id])
+  approvedAt          DateTime?
+  ticketPdfKey        String?
+  issuedAt            DateTime?
+  completedAt         DateTime?
+  cancelledAt         DateTime?
+  cancellationReason  String?
+  payoutStatus        PayoutStatus  @default(NOT_APPLICABLE)
+  payoutReference     String?
+  payoutFailureReason String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  passengers         Passenger[]
+  quoteOptions       QuoteOption[]       @relation("RequestQuoteOptions")
+  walletTransactions WalletTransaction[]
+
+  @@index([status])
+  @@index([assignedAgentId])
+  @@index([clientId])
+  @@map("travel_requests")
+}
+
+model Passenger {
+  id             String        @id @default(uuid())
+  requestId      String
+  request        TravelRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  fullName       String
+  passportNumber String
+  passportExpiry DateTime
+  nationality    String
+  dateOfBirth    DateTime
+  passportDocKey String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([requestId])
+  @@map("passengers")
+}
+
+model QuoteOption {
+  id            String        @id @default(uuid())
+  requestId     String
+  request       TravelRequest @relation("RequestQuoteOptions", fields: [requestId], references: [id], onDelete: Cascade)
+  label         String
+  airline       String
+  price         Int
+  departureTime DateTime
+  details       String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  approvedForRequest TravelRequest? @relation("ApprovedOption")
+
+  @@index([requestId])
+  @@map("quote_options")
+}
+
+model PaystackEvent {
+  id          String              @id @default(uuid())
+  eventId     String              @unique
+  eventType   String
+  status      PaystackEventStatus @default(RECEIVED)
+  payload     Json
+  error       String?
+  createdAt   DateTime            @default(now())
+  processedAt DateTime?
+
+  @@map("paystack_events")
 }
