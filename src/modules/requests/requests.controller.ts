@@ -4,10 +4,15 @@ import { asyncHandler } from "../../utils/asyncHandler";
 import { sendResponse } from "../../utils/apiResponse";
 import * as requestsService from "./requests.service";
 import {
+  approveRequestSchema,
+  cancelRequestSchema,
   createRequestSchema,
   listMyRequestsQuerySchema,
   queueQuerySchema,
+  quoteOptionInputSchema,
+  rejectRequestSchema,
   requestIdParamSchema,
+  requestOptionParamSchema,
 } from "./requests.schema";
 
 export const createRequestHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -66,5 +71,94 @@ export const claimRequestHandler = asyncHandler(async (req: Request, res: Respon
 
   const { id } = requestIdParamSchema.parse(req.params);
   const request = await requestsService.claimRequest(req.user.userId, id);
+  sendResponse(res, 200, { request });
+});
+
+export const addQuoteOptionHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new ApiError(401, "Not authenticated");
+  }
+
+  const { id } = requestIdParamSchema.parse(req.params);
+  const input = quoteOptionInputSchema.parse(req.body);
+  const option = await requestsService.addQuoteOption(req.user.userId, id, input);
+  sendResponse(res, 201, { option });
+});
+
+export const deleteQuoteOptionHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new ApiError(401, "Not authenticated");
+  }
+
+  const { id, optionId } = requestOptionParamSchema.parse(req.params);
+  await requestsService.deleteQuoteOption(req.user.userId, id, optionId);
+  sendResponse(res, 200, { message: "Quote option deleted" });
+});
+
+export const sendOptionsHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new ApiError(401, "Not authenticated");
+  }
+
+  const { id } = requestIdParamSchema.parse(req.params);
+  const request = await requestsService.sendOptions(req.user.userId, id);
+  sendResponse(res, 200, { request });
+});
+
+export const rejectRequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new ApiError(401, "Not authenticated");
+  }
+
+  const { id } = requestIdParamSchema.parse(req.params);
+  const input = rejectRequestSchema.parse(req.body);
+  const request = await requestsService.rejectOptions(req.user.userId, id, input);
+  sendResponse(res, 200, { request });
+});
+
+export const approveRequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new ApiError(401, "Not authenticated");
+  }
+
+  const { id } = requestIdParamSchema.parse(req.params);
+  const input = approveRequestSchema.parse(req.body);
+  const request = await requestsService.approveOption(req.user.userId, id, input);
+  sendResponse(res, 200, { request });
+});
+
+export const cancelRequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new ApiError(401, "Not authenticated");
+  }
+
+  const { id } = requestIdParamSchema.parse(req.params);
+  const input = cancelRequestSchema.parse(req.body);
+  const request = await requestsService.cancelRequest(req.user.userId, id, input);
+  sendResponse(res, 200, { request });
+});
+
+export const issueTicketHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new ApiError(401, "Not authenticated");
+  }
+
+  const file = req.file as Express.Multer.File | undefined;
+  if (!file) {
+    throw new ApiError(400, "A ticket file is required");
+  }
+
+  const { id } = requestIdParamSchema.parse(req.params);
+  const request = await requestsService.issueTicket(req.user.userId, id, file);
+  sendResponse(res, 200, { request });
+});
+
+export const completeRequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new ApiError(401, "Not authenticated");
+  }
+
+  const { id } = requestIdParamSchema.parse(req.params);
+  const request = await requestsService.completeRequest(req.user.userId, id);
   sendResponse(res, 200, { request });
 });

@@ -14,6 +14,12 @@ import {
 } from "../modules/admin/admin.schema";
 import { agentLoginSchema, createAgentSchema } from "../modules/agent/agent.schema";
 import { changeUserRoleSchema, updateUserSchema } from "../modules/users/users.schema";
+import {
+  approveRequestSchema,
+  cancelRequestSchema,
+  quoteOptionInputSchema,
+  rejectRequestSchema,
+} from "../modules/requests/requests.schema";
 
 // `any` param sidesteps a TS instantiation blowup (multi-minute OOM) inferring zodToJsonSchema's generic return type against these chained schemas.
 function toSchema(zodSchema: any): Record<string, unknown> {
@@ -86,6 +92,7 @@ export const openapiDocument = {
     { name: "Agent", description: "Agent login and admin-driven agent onboarding" },
     { name: "Users", description: "Admin management of all user accounts (CLIENT/AGENT/ADMIN)" },
     { name: "Requests", description: "Client-submitted travel requests" },
+    { name: "Wallet", description: "Client wallet balance and transaction ledger" },
   ],
   components: {
     securitySchemes: {
@@ -192,6 +199,19 @@ export const openapiDocument = {
         },
         required: ["id", "fullName", "passportNumber", "passportExpiry", "nationality", "dateOfBirth"],
       },
+      QuoteOptionView: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          label: { type: "string" },
+          airline: { type: "string" },
+          price: { type: "integer", description: "Price in kobo" },
+          departureTime: { type: "string", format: "date-time" },
+          details: { type: "string", nullable: true },
+          createdAt: { type: "string", format: "date-time" },
+        },
+        required: ["id", "label", "airline", "price", "departureTime", "createdAt"],
+      },
       TravelRequestView: {
         type: "object",
         properties: {
@@ -207,15 +227,97 @@ export const openapiDocument = {
           budgetTier: { type: "string", enum: ["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"] },
           preferredAirline: { type: "string", nullable: true },
           preferredTime: { type: "string", nullable: true },
+          assignedAgentId: { type: "string", format: "uuid", nullable: true },
+          rejectionReason: { type: "string", nullable: true },
+          issuedAt: { type: "string", format: "date-time", nullable: true },
+          completedAt: { type: "string", format: "date-time", nullable: true },
+          cancelledAt: { type: "string", format: "date-time", nullable: true },
+          cancellationReason: { type: "string", nullable: true },
+          payoutStatus: { type: "string", enum: ["NOT_APPLICABLE", "PENDING", "SUCCESS", "FAILED"] },
+          ticketDownloadUrl: { type: "string", nullable: true, description: "Short-lived signed URL, null until issued" },
           createdAt: { type: "string", format: "date-time" },
           passengers: { type: "array", items: ref("PassengerView") },
+          quoteOptions: { type: "array", items: ref("QuoteOptionView") },
         },
-        required: ["id", "status", "origin", "destination", "departureDate", "budgetTier", "createdAt", "passengers"],
+        required: [
+          "id",
+          "status",
+          "origin",
+          "destination",
+          "departureDate",
+          "budgetTier",
+          "assignedAgentId",
+          "rejectionReason",
+          "issuedAt",
+          "completedAt",
+          "cancelledAt",
+          "cancellationReason",
+          "payoutStatus",
+          "ticketDownloadUrl",
+          "createdAt",
+          "passengers",
+          "quoteOptions",
+        ],
       },
       RequestResponse: {
         type: "object",
         properties: { request: ref("TravelRequestView") },
         required: ["request"],
+      },
+      AddQuoteOptionRequest: toSchema(quoteOptionInputSchema),
+      QuoteOptionResponse: {
+        type: "object",
+        properties: { option: ref("QuoteOptionView") },
+        required: ["option"],
+      },
+      RejectRequestRequest: toSchema(rejectRequestSchema),
+      ApproveRequestRequest: toSchema(approveRequestSchema),
+      CancelRequestRequest: toSchema(cancelRequestSchema),
+      WalletView: {
+        type: "object",
+        properties: {
+          balance: { type: "integer", description: "Total funds, in kobo" },
+          lockedBalance: { type: "integer", description: "Reserved against approved-but-uncaptured requests, in kobo" },
+          availableBalance: { type: "integer", description: "balance - lockedBalance, in kobo" },
+          updatedAt: { type: "string", format: "date-time", nullable: true },
+        },
+        required: ["balance", "lockedBalance", "availableBalance", "updatedAt"],
+      },
+      WalletResponse: {
+        type: "object",
+        properties: { wallet: ref("WalletView") },
+        required: ["wallet"],
+      },
+      WalletTransactionView: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          type: { type: "string", enum: ["TOPUP", "LOCK", "CAPTURE", "RELEASE", "PAYOUT_DEBIT", "ADJUSTMENT"] },
+          amount: { type: "integer", description: "Always positive, in kobo" },
+          balanceAfter: { type: "integer" },
+          lockedAfter: { type: "integer" },
+          reference: { type: "string" },
+          requestId: { type: "string", format: "uuid", nullable: true },
+          createdAt: { type: "string", format: "date-time" },
+        },
+        required: ["id", "type", "amount", "balanceAfter", "lockedAfter", "reference", "requestId", "createdAt"],
+      },
+      TransactionListResponse: {
+        type: "object",
+        properties: {
+          transactions: { type: "array", items: ref("WalletTransactionView") },
+          pagination: {
+            type: "object",
+            properties: {
+              page: { type: "integer" },
+              limit: { type: "integer" },
+              total: { type: "integer" },
+              totalPages: { type: "integer" },
+            },
+            required: ["page", "limit", "total", "totalPages"],
+          },
+        },
+        required: ["transactions", "pagination"],
       },
       RequestSummaryView: {
         type: "object",
@@ -697,6 +799,172 @@ export const openapiDocument = {
         },
       },
     },
+    "/requests/{id}/options": {
+      post: {
+        tags: ["Requests"],
+        summary: "Add a quote option to a request",
+        description:
+          "Requires the AGENT currently assigned to this request. Only allowed while the request is PENDING or OPTIONS_SENT.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: { required: true, ...jsonContent(ref("AddQuoteOptionRequest")) },
+        responses: {
+          "201": { description: "Quote option created", ...jsonContent(ref("QuoteOptionResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Caller is not the agent assigned to this request", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "Request not found", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "Request is not in an editable status", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests/{id}/options/{optionId}": {
+      delete: {
+        tags: ["Requests"],
+        summary: "Remove a quote option from a request",
+        description:
+          "Requires the AGENT currently assigned to this request. Only allowed while the request is PENDING or OPTIONS_SENT.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "optionId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+        ],
+        responses: {
+          "200": { description: "Quote option deleted", ...jsonContent(ref("MessageResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Caller is not the agent assigned to this request", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "Request or quote option not found", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "Request is not in an editable status", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests/{id}/send-options": {
+      post: {
+        tags: ["Requests"],
+        summary: "Send the added quote options to the client",
+        description:
+          "Requires the AGENT currently assigned to this request. Transitions PENDING -> OPTIONS_SENT. Fails if no quote options have been added yet.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "Options sent", ...jsonContent(ref("RequestResponse")) },
+          "400": { description: "No quote options have been added yet", ...jsonContent(ref("ErrorResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Caller is not the agent assigned to this request", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "Request not found", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "Request is not PENDING", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests/{id}/reject": {
+      post: {
+        tags: ["Requests"],
+        summary: "Reject the sent quote options",
+        description:
+          "Requires the request's own CLIENT. Reverts status from OPTIONS_SENT back to PENDING — the same agent stays assigned and revises the quote.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: { required: true, ...jsonContent(ref("RejectRequestRequest")) },
+        responses: {
+          "200": { description: "Request rejected and reverted to PENDING", ...jsonContent(ref("RequestResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "Request not found", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "Request is not OPTIONS_SENT", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests/{id}/approve": {
+      post: {
+        tags: ["Requests"],
+        summary: "Approve a quote option, locking wallet funds",
+        description:
+          "Requires the request's own CLIENT. Only allowed from OPTIONS_SENT. Locks the option's price against the client's wallet (409 if available balance is insufficient) and transitions to APPROVED_LOCKED, atomically with the wallet lock.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: { required: true, ...jsonContent(ref("ApproveRequestRequest")) },
+        responses: {
+          "200": { description: "Request approved and funds locked", ...jsonContent(ref("RequestResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "Request or quote option not found", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "Request is not OPTIONS_SENT, or insufficient wallet balance", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests/{id}/cancel": {
+      post: {
+        tags: ["Requests"],
+        summary: "Cancel an approved request, releasing locked wallet funds",
+        description:
+          "Requires the request's own CLIENT. Only allowed from APPROVED_LOCKED (blocked once ISSUED). Releases the locked funds back to available balance and transitions to CANCELLED.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: { required: true, ...jsonContent(ref("CancelRequestRequest")) },
+        responses: {
+          "200": { description: "Request cancelled and funds released", ...jsonContent(ref("RequestResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "Request not found", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "Request is not APPROVED_LOCKED", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests/{id}/ticket": {
+      post: {
+        tags: ["Requests"],
+        summary: "Upload the issued ticket, transitioning to ISSUED",
+        description:
+          "Requires the AGENT currently assigned to this request. Only allowed from APPROVED_LOCKED. Multipart upload, field name `ticket`.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                properties: { ticket: { type: "string", format: "binary" } },
+                required: ["ticket"],
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Ticket uploaded, request issued", ...jsonContent(ref("RequestResponse")) },
+          "400": { description: "Ticket file missing or invalid type", ...jsonContent(ref("ErrorResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Caller is not the agent assigned to this request", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "Request not found", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "Request is not APPROVED_LOCKED", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests/{id}/complete": {
+      post: {
+        tags: ["Requests"],
+        summary: "Mark a request complete, capturing wallet funds",
+        description:
+          "Requires the AGENT currently assigned to this request. Only allowed from ISSUED. Captures the locked funds (moves them out of the wallet entirely) and transitions to COMPLETED, setting payoutStatus to PENDING.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "Request completed and funds captured", ...jsonContent(ref("RequestResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Caller is not the agent assigned to this request", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "Request not found", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "Request is not ISSUED", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
     "/requests/{id}": {
       get: {
         tags: ["Requests"],
@@ -709,6 +977,83 @@ export const openapiDocument = {
           "200": { description: "Request detail", ...jsonContent(ref("RequestResponse")) },
           "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
           "404": { description: "Request not found", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/wallet/me": {
+      get: {
+        tags: ["Wallet"],
+        summary: "Get the authenticated client's wallet balance",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Wallet balance", ...jsonContent(ref("WalletResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not a client", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/wallet/me/transactions": {
+      get: {
+        tags: ["Wallet"],
+        summary: "List the authenticated client's wallet ledger",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+        ],
+        responses: {
+          "200": { description: "Paginated transaction ledger", ...jsonContent(ref("TransactionListResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not a client", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/wallet/topup/initialize": {
+      post: {
+        tags: ["Wallet"],
+        summary: "Initialize a Paystack topup",
+        description: "Not yet available — Paystack integration is pending. Always returns 503 for now.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "503": { description: "Topups are not available yet", ...jsonContent(ref("ErrorResponse")) },
+        },
+      },
+    },
+    "/wallet/{userId}": {
+      get: {
+        tags: ["Wallet"],
+        summary: "Get any user's wallet balance",
+        description: "Requires an authenticated ADMIN.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "userId", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "Wallet balance", ...jsonContent(ref("WalletResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/wallet/{userId}/transactions": {
+      get: {
+        tags: ["Wallet"],
+        summary: "List any user's wallet ledger",
+        description: "Requires an authenticated ADMIN.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "userId", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+        ],
+        responses: {
+          "200": { description: "Paginated transaction ledger", ...jsonContent(ref("TransactionListResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
           "500": responses.serverError,
         },
       },

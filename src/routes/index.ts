@@ -4,6 +4,7 @@ import { adminRouter } from "../modules/admin/admin.routes";
 import { agentRouter, agentAdminRouter } from "../modules/agent/agent.routes";
 import { usersRouter } from "../modules/users/users.routes";
 import { requestsRouter } from "../modules/requests/requests.routes";
+import { walletRouter } from "../modules/wallet/wallet.routes";
 
 export const apiRouter = Router();
 
@@ -17,3 +18,4 @@ apiRouter.use("/agent", agentRouter);
 apiRouter.use("/admin/agents", agentAdminRouter);
 apiRouter.use("/admin/users", usersRouter);
 apiRouter.use("/requests", requestsRouter);
+apiRouter.use("/wallet", walletRouter);

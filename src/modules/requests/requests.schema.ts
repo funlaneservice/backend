@@ -35,6 +35,31 @@ export const queueQuerySchema = z.object({
     .transform((v) => v === "true"),
 });
 
+export const quoteOptionInputSchema = z.object({
+  label: z.string().min(1).max(100),
+  airline: z.string().min(1).max(100),
+  price: z.number().int().positive(),
+  departureTime: z.coerce.date(),
+  details: z.string().max(1000).optional(),
+});
+
+export const requestOptionParamSchema = z.object({
+  id: z.string().uuid(),
+  optionId: z.string().uuid(),
+});
+
+export const rejectRequestSchema = z.object({
+  reason: z.string().min(3).max(500),
+});
+
+export const approveRequestSchema = z.object({
+  optionId: z.string().uuid(),
+});
+
+export const cancelRequestSchema = z.object({
+  reason: z.string().min(3).max(500),
+});
+
 export const passengerInputSchema = z.object({
   fullName: z.string().min(2).max(100),
   passportNumber: z.string().min(5).max(20),
@@ -72,3 +97,8 @@ export type CreateRequestInput = z.infer<typeof createRequestSchema>;
 export type RequestIdParam = z.infer<typeof requestIdParamSchema>;
 export type ListMyRequestsQuery = z.infer<typeof listMyRequestsQuerySchema>;
 export type QueueQuery = z.infer<typeof queueQuerySchema>;
+export type QuoteOptionInput = z.infer<typeof quoteOptionInputSchema>;
+export type RequestOptionParam = z.infer<typeof requestOptionParamSchema>;
+export type RejectRequestInput = z.infer<typeof rejectRequestSchema>;
+export type ApproveRequestInput = z.infer<typeof approveRequestSchema>;
+export type CancelRequestInput = z.infer<typeof cancelRequestSchema>;

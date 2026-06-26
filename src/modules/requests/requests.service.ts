@@ -1,11 +1,42 @@
 import { randomUUID } from "crypto";
-import { Prisma } from "@prisma/client";
+import { Prisma, RequestStatus } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
-import { uploadBuffer } from "../uploads/uploads.service";
+import { getSignedDownloadUrl, uploadBuffer } from "../uploads/uploads.service";
+import * as walletService from "../wallet/wallet.service";
 import { ApiError } from "../../utils/ApiError";
-import { CreateRequestInput, ListMyRequestsQuery, QueueQuery } from "./requests.schema";
+import {
+  ApproveRequestInput,
+  CancelRequestInput,
+  CreateRequestInput,
+  ListMyRequestsQuery,
+  QueueQuery,
+  QuoteOptionInput,
+  RejectRequestInput,
+} from "./requests.schema";
 
-function toRequestView(request: {
+const OPTIONS_EDITABLE_STATUSES: RequestStatus[] = ["PENDING", "OPTIONS_SENT"];
+
+function toQuoteOptionView(option: {
+  id: string;
+  label: string;
+  airline: string;
+  price: number;
+  departureTime: Date;
+  details: string | null;
+  createdAt: Date;
+}) {
+  return {
+    id: option.id,
+    label: option.label,
+    airline: option.airline,
+    price: option.price,
+    departureTime: option.departureTime,
+    details: option.details,
+    createdAt: option.createdAt,
+  };
+}
+
+async function toRequestView(request: {
   id: string;
   status: string;
   origin: string;
@@ -15,6 +46,14 @@ function toRequestView(request: {
   budgetTier: string;
   preferredAirline: string | null;
   preferredTime: string | null;
+  assignedAgentId: string | null;
+  rejectionReason: string | null;
+  ticketPdfKey: string | null;
+  issuedAt: Date | null;
+  completedAt: Date | null;
+  cancelledAt: Date | null;
+  cancellationReason: string | null;
+  payoutStatus: string;
   createdAt: Date;
   passengers: {
     id: string;
@@ -24,7 +63,25 @@ function toRequestView(request: {
     nationality: string;
     dateOfBirth: Date;
   }[];
+  quoteOptions: {
+    id: string;
+    label: string;
+    airline: string;
+    price: number;
+    departureTime: Date;
+    details: string | null;
+    createdAt: Date;
+  }[];
 }) {
+  let ticketDownloadUrl: string | null = null;
+  if (request.ticketPdfKey) {
+    try {
+      ticketDownloadUrl = await getSignedDownloadUrl(request.ticketPdfKey);
+    } catch (err) {
+      console.error("[requests] failed to generate ticket download URL:", err);
+    }
+  }
+
   return {
     id: request.id,
     status: request.status,
@@ -35,6 +92,14 @@ function toRequestView(request: {
     budgetTier: request.budgetTier,
     preferredAirline: request.preferredAirline,
     preferredTime: request.preferredTime,
+    assignedAgentId: request.assignedAgentId,
+    rejectionReason: request.rejectionReason,
+    issuedAt: request.issuedAt,
+    completedAt: request.completedAt,
+    cancelledAt: request.cancelledAt,
+    cancellationReason: request.cancellationReason,
+    payoutStatus: request.payoutStatus,
+    ticketDownloadUrl,
     createdAt: request.createdAt,
     passengers: request.passengers.map((p) => ({
       id: p.id,
@@ -44,7 +109,28 @@ function toRequestView(request: {
       nationality: p.nationality,
       dateOfBirth: p.dateOfBirth,
     })),
+    quoteOptions: request.quoteOptions.map(toQuoteOptionView),
   };
+}
+
+async function getAssignedRequestOrThrow(
+  agentId: string,
+  requestId: string,
+  allowedStatuses: RequestStatus[]
+) {
+  const request = await prisma.travelRequest.findUnique({ where: { id: requestId } });
+
+  if (!request) {
+    throw new ApiError(404, "Request not found");
+  }
+  if (request.assignedAgentId !== agentId) {
+    throw new ApiError(403, "You are not assigned to this request");
+  }
+  if (!allowedStatuses.includes(request.status)) {
+    throw new ApiError(409, `Cannot do this while the request is ${request.status}`);
+  }
+
+  return request;
 }
 
 function toRequestSummaryView(request: {
@@ -120,7 +206,7 @@ export async function createRequest(
       preferredTime: input.preferredTime,
       passengers: { create: passengersData },
     },
-    include: { passengers: true },
+    include: { passengers: true, quoteOptions: true },
   });
 
   return toRequestView(request);
@@ -172,7 +258,10 @@ export async function getQueue(agentId: string, query: QueueQuery) {
 }
 
 export async function getRequestById(viewer: { userId: string; role: string }, id: string) {
-  const request = await prisma.travelRequest.findUnique({ where: { id }, include: { passengers: true } });
+  const request = await prisma.travelRequest.findUnique({
+    where: { id },
+    include: { passengers: true, quoteOptions: true },
+  });
 
   if (!request || (viewer.role === "CLIENT" && request.clientId !== viewer.userId)) {
     throw new ApiError(404, "Request not found");
@@ -196,4 +285,172 @@ export async function claimRequest(agentId: string, id: string) {
   }
 
   return getRequestById({ userId: agentId, role: "AGENT" }, id);
+}
+
+export async function addQuoteOption(agentId: string, requestId: string, input: QuoteOptionInput) {
+  await getAssignedRequestOrThrow(agentId, requestId, OPTIONS_EDITABLE_STATUSES);
+
+  const option = await prisma.quoteOption.create({
+    data: {
+      requestId,
+      label: input.label,
+      airline: input.airline,
+      price: input.price,
+      departureTime: input.departureTime,
+      details: input.details,
+    },
+  });
+
+  return toQuoteOptionView(option);
+}
+
+export async function deleteQuoteOption(agentId: string, requestId: string, optionId: string) {
+  await getAssignedRequestOrThrow(agentId, requestId, OPTIONS_EDITABLE_STATUSES);
+
+  const option = await prisma.quoteOption.findUnique({ where: { id: optionId } });
+  if (!option || option.requestId !== requestId) {
+    throw new ApiError(404, "Quote option not found");
+  }
+
+  await prisma.quoteOption.delete({ where: { id: optionId } });
+}
+
+export async function sendOptions(agentId: string, requestId: string) {
+  await getAssignedRequestOrThrow(agentId, requestId, ["PENDING"]);
+
+  const optionCount = await prisma.quoteOption.count({ where: { requestId } });
+  if (optionCount === 0) {
+    throw new ApiError(400, "Add at least one quote option before sending");
+  }
+
+  const updated = await prisma.travelRequest.update({
+    where: { id: requestId },
+    data: { status: "OPTIONS_SENT" },
+    include: { passengers: true, quoteOptions: true },
+  });
+
+  return toRequestView(updated);
+}
+
+export async function approveOption(clientId: string, requestId: string, input: ApproveRequestInput) {
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT 1 FROM travel_requests WHERE id = ${requestId} FOR UPDATE`;
+
+    const request = await tx.travelRequest.findUnique({ where: { id: requestId } });
+    if (!request || request.clientId !== clientId) {
+      throw new ApiError(404, "Request not found");
+    }
+    if (request.status !== "OPTIONS_SENT") {
+      throw new ApiError(409, `Cannot approve while the request is ${request.status}`);
+    }
+
+    const option = await tx.quoteOption.findUnique({ where: { id: input.optionId } });
+    if (!option || option.requestId !== requestId) {
+      throw new ApiError(404, "Quote option not found");
+    }
+
+    await walletService.lockFunds(tx, clientId, option.price, requestId);
+
+    return tx.travelRequest.update({
+      where: { id: requestId },
+      data: { status: "APPROVED_LOCKED", approvedOptionId: input.optionId, approvedAt: new Date() },
+      include: { passengers: true, quoteOptions: true },
+    });
+  });
+
+  return toRequestView(updated);
+}
+
+export async function cancelRequest(clientId: string, requestId: string, input: CancelRequestInput) {
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT 1 FROM travel_requests WHERE id = ${requestId} FOR UPDATE`;
+
+    const request = await tx.travelRequest.findUnique({ where: { id: requestId } });
+    if (!request || request.clientId !== clientId) {
+      throw new ApiError(404, "Request not found");
+    }
+    if (request.status !== "APPROVED_LOCKED") {
+      throw new ApiError(409, `Cannot cancel while the request is ${request.status}`);
+    }
+    if (!request.approvedOptionId) {
+      throw new Error("APPROVED_LOCKED request is missing its approved option");
+    }
+
+    const option = await tx.quoteOption.findUniqueOrThrow({ where: { id: request.approvedOptionId } });
+
+    await walletService.releaseFunds(tx, clientId, option.price, requestId);
+
+    return tx.travelRequest.update({
+      where: { id: requestId },
+      data: { status: "CANCELLED", cancelledAt: new Date(), cancellationReason: input.reason },
+      include: { passengers: true, quoteOptions: true },
+    });
+  });
+
+  return toRequestView(updated);
+}
+
+export async function issueTicket(agentId: string, requestId: string, file: Express.Multer.File) {
+  await getAssignedRequestOrThrow(agentId, requestId, ["APPROVED_LOCKED"]);
+
+  const ticketPdfKey = await uploadBuffer(`tickets/${randomUUID()}`, file.buffer, file.mimetype);
+
+  const updated = await prisma.travelRequest.update({
+    where: { id: requestId },
+    data: { status: "ISSUED", ticketPdfKey, issuedAt: new Date() },
+    include: { passengers: true, quoteOptions: true },
+  });
+
+  return toRequestView(updated);
+}
+
+export async function completeRequest(agentId: string, requestId: string) {
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT 1 FROM travel_requests WHERE id = ${requestId} FOR UPDATE`;
+
+    const request = await tx.travelRequest.findUnique({ where: { id: requestId } });
+    if (!request) {
+      throw new ApiError(404, "Request not found");
+    }
+    if (request.assignedAgentId !== agentId) {
+      throw new ApiError(403, "You are not assigned to this request");
+    }
+    if (request.status !== "ISSUED") {
+      throw new ApiError(409, `Cannot complete while the request is ${request.status}`);
+    }
+    if (!request.approvedOptionId) {
+      throw new Error("ISSUED request is missing its approved option");
+    }
+
+    const option = await tx.quoteOption.findUniqueOrThrow({ where: { id: request.approvedOptionId } });
+
+    await walletService.captureFunds(tx, request.clientId, option.price, requestId);
+
+    return tx.travelRequest.update({
+      where: { id: requestId },
+      data: { status: "COMPLETED", completedAt: new Date(), payoutStatus: "PENDING" },
+      include: { passengers: true, quoteOptions: true },
+    });
+  });
+
+  return toRequestView(updated);
+}
+
+export async function rejectOptions(clientId: string, requestId: string, input: RejectRequestInput) {
+  const request = await prisma.travelRequest.findUnique({ where: { id: requestId } });
+
+  if (!request || request.clientId !== clientId) {
+    throw new ApiError(404, "Request not found");
+  }
+  if (request.status !== "OPTIONS_SENT") {
+    throw new ApiError(409, `Cannot reject while the request is ${request.status}`);
+  }
+
+  const updated = await prisma.travelRequest.update({
+    where: { id: requestId },
+    data: { status: "PENDING", rejectionReason: input.reason, rejectedAt: new Date() },
+    include: { passengers: true, quoteOptions: true },
+  });
+
+  return toRequestView(updated);
 }
