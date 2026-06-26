@@ -18,6 +18,10 @@ export async function adminLogin(input: AdminLoginInput) {
     throw new ApiError(403, "This account does not have admin access");
   }
 
+  if (user.status === "SUSPENDED") {
+    throw new ApiError(403, "This account has been suspended");
+  }
+
   const token = signToken({ userId: user.id, role: user.role });
   return { admin: toPublicAdmin(user), token };
 }

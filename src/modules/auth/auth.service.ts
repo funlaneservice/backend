@@ -45,6 +45,10 @@ export async function login(input: LoginInput) {
     throw new ApiError(401, "Invalid email or password");
   }
 
+  if (user.status === "SUSPENDED") {
+    throw new ApiError(403, "This account has been suspended");
+  }
+
   if (!user.emailVerifiedAt) {
     throw new ApiError(403, "Please verify your email before logging in");
   }

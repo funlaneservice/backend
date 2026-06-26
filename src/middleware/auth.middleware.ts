@@ -21,11 +21,15 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
 
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { passwordChangedAt: true },
+      select: { passwordChangedAt: true, status: true },
     });
 
     if (user?.passwordChangedAt && (!payload.iat || payload.iat * 1000 < user.passwordChangedAt.getTime())) {
       throw new ApiError(401, "Session expired, please log in again");
+    }
+
+    if (user?.status === "SUSPENDED") {
+      throw new ApiError(403, "This account has been suspended");
     }
 
     req.user = payload;

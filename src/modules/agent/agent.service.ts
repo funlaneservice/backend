@@ -22,6 +22,10 @@ export async function agentLogin(input: AgentLoginInput) {
     throw new ApiError(403, "This account does not have agent access");
   }
 
+  if (user.status === "SUSPENDED") {
+    throw new ApiError(403, "This account has been suspended");
+  }
+
   const token = signToken({ userId: user.id, role: user.role });
   return { agent: toPublicAgent(user), token };
 }

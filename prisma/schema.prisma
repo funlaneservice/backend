@@ -13,6 +13,11 @@ enum Role {
   ADMIN
 }
 
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
 enum VerificationTokenType {
   EMAIL_VERIFICATION
   PASSWORD_RESET
@@ -25,6 +30,7 @@ model User {
   name              String
   phone             String
   role              Role      @default(CLIENT)
+  status            UserStatus @default(ACTIVE)
   emailVerifiedAt   DateTime?
   passwordChangedAt DateTime?
   createdAt         DateTime  @default(now())

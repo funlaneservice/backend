@@ -13,6 +13,7 @@ import {
   createAdminSchema,
 } from "../modules/admin/admin.schema";
 import { agentLoginSchema, createAgentSchema } from "../modules/agent/agent.schema";
+import { changeUserRoleSchema, updateUserSchema } from "../modules/users/users.schema";
 
 // `any` param sidesteps a TS instantiation blowup (multi-minute OOM) inferring zodToJsonSchema's generic return type against these chained schemas.
 function toSchema(zodSchema: any): Record<string, unknown> {
@@ -83,6 +84,7 @@ export const openapiDocument = {
     { name: "Auth", description: "Registration, login, email verification, and password reset" },
     { name: "Admin", description: "Admin login and admin account creation" },
     { name: "Agent", description: "Agent login and admin-driven agent onboarding" },
+    { name: "Users", description: "Admin management of all user accounts (CLIENT/AGENT/ADMIN)" },
   ],
   components: {
     securitySchemes: {
@@ -139,6 +141,44 @@ export const openapiDocument = {
         properties: { agent: ref("PublicUser") },
         required: ["agent"],
       },
+      AdminUserView: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          email: { type: "string", format: "email" },
+          name: { type: "string" },
+          phone: { type: "string" },
+          role: { type: "string", enum: ["CLIENT", "AGENT", "ADMIN"] },
+          status: { type: "string", enum: ["ACTIVE", "SUSPENDED"] },
+          emailVerifiedAt: { type: "string", format: "date-time", nullable: true },
+          createdAt: { type: "string", format: "date-time" },
+        },
+        required: ["id", "email", "name", "phone", "role", "status", "emailVerifiedAt", "createdAt"],
+      },
+      ListUsersResponse: {
+        type: "object",
+        properties: {
+          users: { type: "array", items: ref("AdminUserView") },
+          pagination: {
+            type: "object",
+            properties: {
+              page: { type: "integer" },
+              limit: { type: "integer" },
+              total: { type: "integer" },
+              totalPages: { type: "integer" },
+            },
+            required: ["page", "limit", "total", "totalPages"],
+          },
+        },
+        required: ["users", "pagination"],
+      },
+      UserResponse: {
+        type: "object",
+        properties: { user: ref("AdminUserView") },
+        required: ["user"],
+      },
+      UpdateUserRequest: toSchema(updateUserSchema),
+      ChangeUserRoleRequest: toSchema(changeUserRoleSchema),
     },
   },
   paths: {
@@ -329,6 +369,125 @@ export const openapiDocument = {
           "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
           "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
           "409": { description: "An account with this email already exists", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/admin/users": {
+      get: {
+        tags: ["Users"],
+        summary: "List/search users",
+        description: "Requires an authenticated ADMIN. Supports pagination and filtering by role, status, and a name/email search term.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+          { name: "role", in: "query", schema: { type: "string", enum: ["CLIENT", "AGENT", "ADMIN"] } },
+          { name: "status", in: "query", schema: { type: "string", enum: ["ACTIVE", "SUSPENDED"] } },
+          { name: "search", in: "query", schema: { type: "string" } },
+        ],
+        responses: {
+          "200": { description: "Paginated list of users", ...jsonContent(ref("ListUsersResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/admin/users/{id}": {
+      get: {
+        tags: ["Users"],
+        summary: "Get a single user",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "User detail", ...jsonContent(ref("UserResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "User not found", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+      patch: {
+        tags: ["Users"],
+        summary: "Update a user's name/phone",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: { required: true, ...jsonContent(ref("UpdateUserRequest")) },
+        responses: {
+          "200": { description: "User updated", ...jsonContent(ref("UserResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "User not found", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+      delete: {
+        tags: ["Users"],
+        summary: "Permanently delete a user",
+        description: "An admin cannot delete their own account.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "User deleted", ...jsonContent(ref("MessageResponse")) },
+          "400": { description: "Cannot delete your own account", ...jsonContent(ref("ErrorResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "User not found", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/admin/users/{id}/role": {
+      patch: {
+        tags: ["Users"],
+        summary: "Change a user's role",
+        description: "An admin cannot change their own role.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: { required: true, ...jsonContent(ref("ChangeUserRoleRequest")) },
+        responses: {
+          "200": { description: "Role changed", ...jsonContent(ref("UserResponse")) },
+          "400": { description: "Validation failure, or attempted to change own role", ...jsonContent(ref("ErrorResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "User not found", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/admin/users/{id}/suspend": {
+      post: {
+        tags: ["Users"],
+        summary: "Suspend a user",
+        description: "Blocks login and immediately invalidates active sessions (checked in requireAuth). An admin cannot suspend their own account.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "User suspended", ...jsonContent(ref("UserResponse")) },
+          "400": { description: "Attempted to suspend own account", ...jsonContent(ref("ErrorResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "User not found", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "User is already suspended", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/admin/users/{id}/reactivate": {
+      post: {
+        tags: ["Users"],
+        summary: "Reactivate a suspended user",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "User reactivated", ...jsonContent(ref("UserResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "User not found", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "User is already active", ...jsonContent(ref("ErrorResponse")) },
           "500": responses.serverError,
         },
       },
