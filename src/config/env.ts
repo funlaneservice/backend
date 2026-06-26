@@ -20,6 +20,15 @@ export const env = {
   resendApiKey: process.env.RESEND_API_KEY,
   emailFrom: process.env.EMAIL_FROM ?? "Funlane Travel <no-reply@funlane.com>",
   emailRedirectTo: process.env.EMAIL_REDIRECT_TO,
+
+  awsRegion: process.env.AWS_REGION,
+  awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  awsS3Bucket: process.env.AWS_S3_BUCKET,
+
+  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME,
+  cloudinaryApiKey: process.env.CLOUDINARY_API_KEY,
+  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET,
 };
 
 export const isProduction = env.nodeEnv === "production";

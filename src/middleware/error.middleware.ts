@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import multer from "multer";
 import { ZodError } from "zod";
 import { ApiError } from "../utils/ApiError";
 import { isProduction } from "../config/env";
@@ -22,6 +23,11 @@ export function errorHandler(
 
   if (err instanceof ApiError) {
     res.status(err.statusCode).json({ statusCode: err.statusCode, message: err.message });
+    return;
+  }
+
+  if (err instanceof multer.MulterError) {
+    res.status(400).json({ statusCode: 400, message: err.message });
     return;
   }
 

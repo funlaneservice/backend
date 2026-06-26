@@ -85,6 +85,7 @@ export const openapiDocument = {
     { name: "Admin", description: "Admin login and admin account creation" },
     { name: "Agent", description: "Agent login and admin-driven agent onboarding" },
     { name: "Users", description: "Admin management of all user accounts (CLIENT/AGENT/ADMIN)" },
+    { name: "Requests", description: "Client-submitted travel requests" },
   ],
   components: {
     securitySchemes: {
@@ -179,6 +180,91 @@ export const openapiDocument = {
       },
       UpdateUserRequest: toSchema(updateUserSchema),
       ChangeUserRoleRequest: toSchema(changeUserRoleSchema),
+      PassengerView: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          fullName: { type: "string" },
+          passportNumber: { type: "string" },
+          passportExpiry: { type: "string", format: "date-time" },
+          nationality: { type: "string" },
+          dateOfBirth: { type: "string", format: "date-time" },
+        },
+        required: ["id", "fullName", "passportNumber", "passportExpiry", "nationality", "dateOfBirth"],
+      },
+      TravelRequestView: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          status: {
+            type: "string",
+            enum: ["PENDING", "OPTIONS_SENT", "APPROVED_LOCKED", "ISSUED", "COMPLETED", "CANCELLED"],
+          },
+          origin: { type: "string" },
+          destination: { type: "string" },
+          departureDate: { type: "string", format: "date-time" },
+          returnDate: { type: "string", format: "date-time", nullable: true },
+          budgetTier: { type: "string", enum: ["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"] },
+          preferredAirline: { type: "string", nullable: true },
+          preferredTime: { type: "string", nullable: true },
+          createdAt: { type: "string", format: "date-time" },
+          passengers: { type: "array", items: ref("PassengerView") },
+        },
+        required: ["id", "status", "origin", "destination", "departureDate", "budgetTier", "createdAt", "passengers"],
+      },
+      RequestResponse: {
+        type: "object",
+        properties: { request: ref("TravelRequestView") },
+        required: ["request"],
+      },
+      RequestSummaryView: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          status: {
+            type: "string",
+            enum: ["PENDING", "OPTIONS_SENT", "APPROVED_LOCKED", "ISSUED", "COMPLETED", "CANCELLED"],
+          },
+          origin: { type: "string" },
+          destination: { type: "string" },
+          departureDate: { type: "string", format: "date-time" },
+          returnDate: { type: "string", format: "date-time", nullable: true },
+          budgetTier: { type: "string", enum: ["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"] },
+          preferredAirline: { type: "string", nullable: true },
+          preferredTime: { type: "string", nullable: true },
+          assignedAgentId: { type: "string", format: "uuid", nullable: true },
+          passengerCount: { type: "integer" },
+          createdAt: { type: "string", format: "date-time" },
+        },
+        required: [
+          "id",
+          "status",
+          "origin",
+          "destination",
+          "departureDate",
+          "budgetTier",
+          "assignedAgentId",
+          "passengerCount",
+          "createdAt",
+        ],
+      },
+      RequestListResponse: {
+        type: "object",
+        properties: {
+          requests: { type: "array", items: ref("RequestSummaryView") },
+          pagination: {
+            type: "object",
+            properties: {
+              page: { type: "integer" },
+              limit: { type: "integer" },
+              total: { type: "integer" },
+              totalPages: { type: "integer" },
+            },
+            required: ["page", "limit", "total", "totalPages"],
+          },
+        },
+        required: ["requests", "pagination"],
+      },
     },
   },
   paths: {
@@ -488,6 +574,141 @@ export const openapiDocument = {
           "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
           "404": { description: "User not found", ...jsonContent(ref("ErrorResponse")) },
           "409": { description: "User is already active", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests": {
+      post: {
+        tags: ["Requests"],
+        summary: "Submit a new travel request",
+        description:
+          "Requires an authenticated CLIENT. Multipart upload: `passengers` is a JSON-encoded array of passenger objects, and `passportDocs` must contain exactly one file per passenger, in the same order.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                properties: {
+                  origin: { type: "string" },
+                  destination: { type: "string" },
+                  departureDate: { type: "string", format: "date" },
+                  returnDate: { type: "string", format: "date" },
+                  budgetTier: { type: "string", enum: ["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"] },
+                  preferredAirline: { type: "string" },
+                  preferredTime: { type: "string" },
+                  passengers: {
+                    type: "string",
+                    description:
+                      "JSON-encoded array of { fullName, passportNumber, passportExpiry, nationality, dateOfBirth }",
+                  },
+                  passportDocs: {
+                    type: "array",
+                    items: { type: "string", format: "binary" },
+                    description: "One passport scan (JPEG/PNG/PDF) per passenger, same order as `passengers`",
+                  },
+                },
+                required: ["origin", "destination", "departureDate", "budgetTier", "passengers", "passportDocs"],
+              },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "Request created", ...jsonContent(ref("RequestResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not a client", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests/mine": {
+      get: {
+        tags: ["Requests"],
+        summary: "List the authenticated client's own travel requests",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+          {
+            name: "status",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["PENDING", "OPTIONS_SENT", "APPROVED_LOCKED", "ISSUED", "COMPLETED", "CANCELLED"],
+            },
+          },
+        ],
+        responses: {
+          "200": { description: "Paginated list of the client's requests", ...jsonContent(ref("RequestListResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not a client", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests/queue": {
+      get: {
+        tags: ["Requests"],
+        summary: "Browse the shared agent queue",
+        description:
+          "Requires an authenticated AGENT or ADMIN. By default returns the unclaimed pool (status PENDING, unassigned). Pass `mine=true` to see the requests currently assigned to the caller instead.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+          {
+            name: "status",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["PENDING", "OPTIONS_SENT", "APPROVED_LOCKED", "ISSUED", "COMPLETED", "CANCELLED"],
+            },
+          },
+          { name: "mine", in: "query", schema: { type: "string", enum: ["true", "false"] } },
+        ],
+        responses: {
+          "200": { description: "Paginated queue", ...jsonContent(ref("RequestListResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an agent or admin", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests/{id}/claim": {
+      post: {
+        tags: ["Requests"],
+        summary: "Claim an unassigned request from the queue",
+        description:
+          "Requires an authenticated AGENT. Atomic conditional update — only succeeds if the request is still PENDING and unassigned at the moment of the call, so two agents racing on the same request can't both win.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "Request claimed", ...jsonContent(ref("RequestResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an agent", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "Request not found", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "Request has already been claimed by another agent", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests/{id}": {
+      get: {
+        tags: ["Requests"],
+        summary: "Get a single travel request",
+        description:
+          "Requires authentication. A CLIENT can only view their own requests (others 404). AGENT/ADMIN can view any request.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "Request detail", ...jsonContent(ref("RequestResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "Request not found", ...jsonContent(ref("ErrorResponse")) },
           "500": responses.serverError,
         },
       },

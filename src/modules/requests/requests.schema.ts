@@ -1,0 +1,74 @@
+import { z } from "zod";
+
+const MAX_PASSENGERS = 9;
+
+const emptyToUndefined = (val: unknown) => (val === "" ? undefined : val);
+
+export const budgetTierSchema = z.enum(["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"]);
+
+export const requestStatusSchema = z.enum([
+  "PENDING",
+  "OPTIONS_SENT",
+  "APPROVED_LOCKED",
+  "ISSUED",
+  "COMPLETED",
+  "CANCELLED",
+]);
+
+export const requestIdParamSchema = z.object({
+  id: z.string().uuid(),
+});
+
+export const listMyRequestsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  status: requestStatusSchema.optional(),
+});
+
+export const queueQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  status: requestStatusSchema.optional(),
+  mine: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
+});
+
+export const passengerInputSchema = z.object({
+  fullName: z.string().min(2).max(100),
+  passportNumber: z.string().min(5).max(20),
+  passportExpiry: z.coerce.date().refine((d) => d.getTime() > Date.now(), {
+    message: "passportExpiry must be in the future",
+  }),
+  nationality: z.string().min(2).max(56),
+  dateOfBirth: z.coerce.date().refine((d) => d.getTime() < Date.now(), {
+    message: "dateOfBirth must be in the past",
+  }),
+});
+
+export const createRequestSchema = z
+  .object({
+    origin: z.string().min(2).max(100),
+    destination: z.string().min(2).max(100),
+    departureDate: z.coerce.date(),
+    returnDate: z.preprocess(emptyToUndefined, z.coerce.date().optional()),
+    budgetTier: budgetTierSchema,
+    preferredAirline: z.preprocess(emptyToUndefined, z.string().min(1).max(100).optional()),
+    preferredTime: z.preprocess(emptyToUndefined, z.string().min(1).max(50).optional()),
+    passengers: z.array(passengerInputSchema).min(1).max(MAX_PASSENGERS),
+  })
+  .refine((data) => data.departureDate.getTime() >= Date.now() - 24 * 60 * 60 * 1000, {
+    message: "departureDate must not be in the past",
+    path: ["departureDate"],
+  })
+  .refine((data) => !data.returnDate || data.returnDate.getTime() > data.departureDate.getTime(), {
+    message: "returnDate must be after departureDate",
+    path: ["returnDate"],
+  });
+
+export type PassengerInput = z.infer<typeof passengerInputSchema>;
+export type CreateRequestInput = z.infer<typeof createRequestSchema>;
+export type RequestIdParam = z.infer<typeof requestIdParamSchema>;
+export type ListMyRequestsQuery = z.infer<typeof listMyRequestsQuerySchema>;
+export type QueueQuery = z.infer<typeof queueQuerySchema>;
