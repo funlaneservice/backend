@@ -19,6 +19,7 @@ export const env = {
 
   resendApiKey: process.env.RESEND_API_KEY,
   emailFrom: process.env.EMAIL_FROM ?? "Funlane Travel <no-reply@funlane.com>",
+  emailRedirectTo: process.env.EMAIL_REDIRECT_TO,
 };
 
 export const isProduction = env.nodeEnv === "production";

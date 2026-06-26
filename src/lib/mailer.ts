@@ -11,6 +11,12 @@ if (!isConfigured) {
   );
 }
 
+if (env.emailRedirectTo) {
+  console.warn(
+    `[mailer] EMAIL_REDIRECT_TO is set — all emails will be redirected to ${env.emailRedirectTo} instead of their real recipient. Remove this env var once a sending domain is verified in Resend.`
+  );
+}
+
 export interface MailOptions {
   to: string;
   subject: string;
@@ -19,17 +25,30 @@ export interface MailOptions {
 }
 
 export async function sendMail(options: MailOptions): Promise<void> {
+  const redirectTo = env.emailRedirectTo;
+  const actualOptions = redirectTo
+    ? {
+        ...options,
+        to: redirectTo,
+        subject: `[to: ${options.to}] ${options.subject}`,
+        html: `<p><em>Originally addressed to ${options.to}</em></p>${options.html}`,
+        text: options.text ? `(Originally addressed to ${options.to})\n${options.text}` : options.text,
+      }
+    : options;
+
   if (!resend) {
-    console.info(`[mailer] (no-op) To: ${options.to} | Subject: ${options.subject}\n${options.text ?? options.html}`);
+    console.info(
+      `[mailer] (no-op) To: ${actualOptions.to} | Subject: ${actualOptions.subject}\n${actualOptions.text ?? actualOptions.html}`
+    );
     return;
   }
 
   const { error } = await resend.emails.send({
     from: env.emailFrom,
-    to: options.to,
-    subject: options.subject,
-    html: options.html,
-    text: options.text,
+    to: actualOptions.to,
+    subject: actualOptions.subject,
+    html: actualOptions.html,
+    text: actualOptions.text,
   });
 
   if (error) {
