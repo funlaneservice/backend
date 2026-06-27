@@ -3,6 +3,7 @@ import { requireAuth, requireRole } from "../../middleware/auth.middleware";
 import { upload } from "../../middleware/upload.middleware";
 import {
   addQuoteOptionHandler,
+  adminListRequestsHandler,
   approveRequestHandler,
   cancelRequestHandler,
   claimRequestHandler,
@@ -26,6 +27,7 @@ requestsRouter.post(
   upload.array("passportDocs"),
   createRequestHandler
 );
+requestsRouter.get("/", requireAuth, requireRole("ADMIN"), adminListRequestsHandler);
 requestsRouter.get("/mine", requireAuth, requireRole("CLIENT"), listMyRequestsHandler);
 requestsRouter.get("/queue", requireAuth, requireRole("AGENT", "ADMIN"), getQueueHandler);
 requestsRouter.post("/:id/claim", requireAuth, requireRole("AGENT"), claimRequestHandler);

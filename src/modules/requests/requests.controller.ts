@@ -4,6 +4,7 @@ import { asyncHandler } from "../../utils/asyncHandler";
 import { sendResponse } from "../../utils/apiResponse";
 import * as requestsService from "./requests.service";
 import {
+  adminListRequestsQuerySchema,
   approveRequestSchema,
   cancelRequestSchema,
   createRequestSchema,
@@ -41,6 +42,12 @@ export const listMyRequestsHandler = asyncHandler(async (req: Request, res: Resp
 
   const query = listMyRequestsQuerySchema.parse(req.query);
   const result = await requestsService.listMyRequests(req.user.userId, query);
+  sendResponse(res, 200, result);
+});
+
+export const adminListRequestsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const query = adminListRequestsQuerySchema.parse(req.query);
+  const result = await requestsService.adminListRequests(query);
   sendResponse(res, 200, result);
 });
 

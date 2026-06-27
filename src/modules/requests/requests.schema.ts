@@ -35,6 +35,14 @@ export const queueQuerySchema = z.object({
     .transform((v) => v === "true"),
 });
 
+export const adminListRequestsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  status: requestStatusSchema.optional(),
+  clientId: z.string().uuid().optional(),
+  assignedAgentId: z.string().uuid().optional(),
+});
+
 export const quoteOptionInputSchema = z.object({
   label: z.string().min(1).max(100),
   airline: z.string().min(1).max(100),
@@ -96,6 +104,7 @@ export type PassengerInput = z.infer<typeof passengerInputSchema>;
 export type CreateRequestInput = z.infer<typeof createRequestSchema>;
 export type RequestIdParam = z.infer<typeof requestIdParamSchema>;
 export type ListMyRequestsQuery = z.infer<typeof listMyRequestsQuerySchema>;
+export type AdminListRequestsQuery = z.infer<typeof adminListRequestsQuerySchema>;
 export type QueueQuery = z.infer<typeof queueQuerySchema>;
 export type QuoteOptionInput = z.infer<typeof quoteOptionInputSchema>;
 export type RequestOptionParam = z.infer<typeof requestOptionParamSchema>;

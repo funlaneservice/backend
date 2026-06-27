@@ -725,6 +725,33 @@ export const openapiDocument = {
           "500": responses.serverError,
         },
       },
+      get: {
+        tags: ["Requests"],
+        summary: "List/search all travel requests",
+        description: "Requires an authenticated ADMIN. Supports filtering by status, clientId, and assignedAgentId.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+          {
+            name: "status",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["PENDING", "OPTIONS_SENT", "APPROVED_LOCKED", "ISSUED", "COMPLETED", "CANCELLED"],
+            },
+          },
+          { name: "clientId", in: "query", schema: { type: "string", format: "uuid" } },
+          { name: "assignedAgentId", in: "query", schema: { type: "string", format: "uuid" } },
+        ],
+        responses: {
+          "200": { description: "Paginated list of all requests", ...jsonContent(ref("RequestListResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
     },
     "/requests/mine": {
       get: {

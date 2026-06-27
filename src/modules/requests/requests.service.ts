@@ -1,10 +1,12 @@
 import { randomUUID } from "crypto";
 import { Prisma, RequestStatus } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
+import * as notificationsService from "../notifications/notifications.service";
 import { getSignedDownloadUrl, uploadBuffer } from "../uploads/uploads.service";
 import * as walletService from "../wallet/wallet.service";
 import { ApiError } from "../../utils/ApiError";
 import {
+  AdminListRequestsQuery,
   ApproveRequestInput,
   CancelRequestInput,
   CreateRequestInput,
@@ -235,6 +237,30 @@ export async function listMyRequests(clientId: string, query: ListMyRequestsQuer
   };
 }
 
+export async function adminListRequests(query: AdminListRequestsQuery) {
+  const where: Prisma.TravelRequestWhereInput = {
+    ...(query.status ? { status: query.status } : {}),
+    ...(query.clientId ? { clientId: query.clientId } : {}),
+    ...(query.assignedAgentId ? { assignedAgentId: query.assignedAgentId } : {}),
+  };
+
+  const [requests, total] = await Promise.all([
+    prisma.travelRequest.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (query.page - 1) * query.limit,
+      take: query.limit,
+      include: { _count: { select: { passengers: true } } },
+    }),
+    prisma.travelRequest.count({ where }),
+  ]);
+
+  return {
+    requests: requests.map(toRequestSummaryView),
+    pagination: paginate(total, query.page, query.limit),
+  };
+}
+
 export async function getQueue(agentId: string, query: QueueQuery) {
   const where: Prisma.TravelRequestWhereInput = query.mine
     ? { assignedAgentId: agentId, ...(query.status ? { status: query.status } : {}) }
@@ -329,6 +355,8 @@ export async function sendOptions(agentId: string, requestId: string) {
     include: { passengers: true, quoteOptions: true },
   });
 
+  void notificationsService.notifyOptionsSent(requestId, updated.clientId);
+
   return toRequestView(updated);
 }
 
@@ -357,6 +385,10 @@ export async function approveOption(clientId: string, requestId: string, input: 
       include: { passengers: true, quoteOptions: true },
     });
   });
+
+  if (updated.assignedAgentId) {
+    void notificationsService.notifyRequestApproved(requestId, updated.assignedAgentId);
+  }
 
   return toRequestView(updated);
 }
@@ -400,6 +432,8 @@ export async function issueTicket(agentId: string, requestId: string, file: Expr
     data: { status: "ISSUED", ticketPdfKey, issuedAt: new Date() },
     include: { passengers: true, quoteOptions: true },
   });
+
+  void notificationsService.notifyTicketCompleted(requestId, updated.clientId);
 
   return toRequestView(updated);
 }
@@ -451,6 +485,10 @@ export async function rejectOptions(clientId: string, requestId: string, input: 
     data: { status: "PENDING", rejectionReason: input.reason, rejectedAt: new Date() },
     include: { passengers: true, quoteOptions: true },
   });
+
+  if (updated.assignedAgentId) {
+    void notificationsService.notifyRequestRejected(requestId, updated.assignedAgentId, input.reason);
+  }
 
   return toRequestView(updated);
 }
