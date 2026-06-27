@@ -147,7 +147,7 @@ model TravelRequest {
   rejectionReason     String?
   rejectedAt          DateTime?
   approvedOptionId    String?       @unique
-  approvedOption      QuoteOption?  @relation("ApprovedOption", fields: [approvedOptionId], references: [id])
+  approvedOption      QuoteOption?  @relation("ApprovedOption", fields: [approvedOptionId], references: [id], onDelete: Restrict)
   approvedAt          DateTime?
   ticketPdfKey        String?
   issuedAt            DateTime?

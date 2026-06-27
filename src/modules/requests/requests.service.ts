@@ -331,14 +331,37 @@ export async function addQuoteOption(agentId: string, requestId: string, input: 
 }
 
 export async function deleteQuoteOption(agentId: string, requestId: string, optionId: string) {
-  await getAssignedRequestOrThrow(agentId, requestId, OPTIONS_EDITABLE_STATUSES);
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT 1 FROM travel_requests WHERE id = ${requestId} FOR UPDATE`;
 
-  const option = await prisma.quoteOption.findUnique({ where: { id: optionId } });
-  if (!option || option.requestId !== requestId) {
-    throw new ApiError(404, "Quote option not found");
-  }
+    const request = await tx.travelRequest.findUnique({ where: { id: requestId } });
+    if (!request) {
+      throw new ApiError(404, "Request not found");
+    }
+    if (request.assignedAgentId !== agentId) {
+      throw new ApiError(403, "You are not assigned to this request");
+    }
+    if (!OPTIONS_EDITABLE_STATUSES.includes(request.status)) {
+      throw new ApiError(409, `Cannot do this while the request is ${request.status}`);
+    }
+    if (request.approvedOptionId === optionId) {
+      throw new ApiError(409, "This option has already been approved and cannot be deleted");
+    }
 
-  await prisma.quoteOption.delete({ where: { id: optionId } });
+    const option = await tx.quoteOption.findUnique({ where: { id: optionId } });
+    if (!option || option.requestId !== requestId) {
+      throw new ApiError(404, "Quote option not found");
+    }
+
+    try {
+      await tx.quoteOption.delete({ where: { id: optionId } });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+        throw new ApiError(409, "This option has already been approved and cannot be deleted");
+      }
+      throw err;
+    }
+  });
 }
 
 export async function sendOptions(agentId: string, requestId: string) {
