@@ -20,6 +20,7 @@ import {
   quoteOptionInputSchema,
   rejectRequestSchema,
 } from "../modules/requests/requests.schema";
+import { initializeTopupBodySchema } from "../modules/wallet/wallet.schema";
 
 // `any` param sidesteps a TS instantiation blowup (multi-minute OOM) inferring zodToJsonSchema's generic return type against these chained schemas.
 function toSchema(zodSchema: any): Record<string, unknown> {
@@ -318,6 +319,16 @@ export const openapiDocument = {
           },
         },
         required: ["transactions", "pagination"],
+      },
+      TopupInitializeRequest: toSchema(initializeTopupBodySchema),
+      TopupInitializeResponse: {
+        type: "object",
+        properties: {
+          authorizationUrl: { type: "string", description: "Paystack-hosted checkout page to redirect the client to" },
+          accessCode: { type: "string" },
+          reference: { type: "string", description: "Wallet is credited once this reference's charge.success webhook is verified" },
+        },
+        required: ["authorizationUrl", "accessCode", "reference"],
       },
       RequestSummaryView: {
         type: "object",
@@ -1043,10 +1054,31 @@ export const openapiDocument = {
       post: {
         tags: ["Wallet"],
         summary: "Initialize a Paystack topup",
-        description: "Not yet available — Paystack integration is pending. Always returns 503 for now.",
+        description:
+          "Returns a Paystack-hosted checkout URL for the given amount (kobo). The wallet is credited asynchronously once /wallet/webhook/paystack verifies the resulting charge.success event — not immediately on this response.",
         security: [{ bearerAuth: [] }],
+        requestBody: { required: true, ...jsonContent(ref("TopupInitializeRequest")) },
         responses: {
-          "503": { description: "Topups are not available yet", ...jsonContent(ref("ErrorResponse")) },
+          "200": { description: "Paystack checkout initialized", ...jsonContent(ref("TopupInitializeResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not a client", ...jsonContent(ref("ErrorResponse")) },
+          "503": { description: "Paystack is not configured", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/wallet/webhook/paystack": {
+      post: {
+        tags: ["Wallet"],
+        summary: "Paystack webhook (charge.success credits the wallet)",
+        description:
+          "Called by Paystack, not by clients. Verifies the X-Paystack-Signature header (HMAC-SHA512 over the raw body, keyed by the secret key) rather than a bearer token. Idempotent per event via the paystack_events table.",
+        responses: {
+          "200": { description: "Event acknowledged (processed, or already processed)" },
+          "400": { description: "Malformed payload", ...jsonContent(ref("ErrorResponse")) },
+          "401": { description: "Missing or invalid signature", ...jsonContent(ref("ErrorResponse")) },
+          "500": { description: "Processing failed — Paystack should retry delivery" },
         },
       },
     },

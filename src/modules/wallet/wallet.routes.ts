@@ -6,9 +6,14 @@ import {
   getUserTransactionsHandler,
   getUserWalletHandler,
   initializeTopupHandler,
+  paystackWebhookHandler,
 } from "./wallet.controller";
 
 export const walletRouter = Router();
+
+// Called by Paystack directly (no user session) — authenticated via HMAC signature
+// verification inside the handler instead of requireAuth.
+walletRouter.post("/webhook/paystack", paystackWebhookHandler);
 
 walletRouter.get("/me", requireAuth, requireRole("CLIENT"), getMyWalletHandler);
 walletRouter.get("/me/transactions", requireAuth, requireRole("CLIENT"), getMyTransactionsHandler);

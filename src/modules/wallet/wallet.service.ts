@@ -1,6 +1,8 @@
 import { randomUUID } from "crypto";
 import { Prisma, Wallet, WalletTransactionType } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
+import * as paystack from "../../lib/paystack";
+import { env } from "../../config/env";
 import { ApiError } from "../../utils/ApiError";
 import { ListTransactionsQuery } from "./wallet.schema";
 
@@ -164,6 +166,81 @@ export async function getTransactions(userId: string, query: ListTransactionsQue
   };
 }
 
-export async function initializeTopup(): Promise<never> {
-  throw new ApiError(503, "Topups are not available yet — Paystack integration is pending");
+export async function initializeTopup(userId: string, amountKobo: number) {
+  if (!paystack.isPaystackConfigured()) {
+    throw new ApiError(503, "Topups are not available yet — Paystack is not configured");
+  }
+
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true } });
+  const reference = `topup_${randomUUID()}`;
+
+  const { authorizationUrl, accessCode } = await paystack.initializeTransaction({
+    email: user.email,
+    amountKobo,
+    reference,
+    metadata: { userId },
+    callbackUrl: `${env.frontendUrl}/wallet/topup/callback`,
+  });
+
+  return { authorizationUrl, accessCode, reference };
+}
+
+// Called from the webhook route once the signature is verified. Idempotent per
+// `eventId` (`<eventType>:<paystack transaction id>`): a PROCESSED row short-circuits
+// immediately, and a RECEIVED/FAILED row (e.g. a prior attempt crashed mid-processing)
+// is safe to retry since crediting the wallet is itself idempotent on the unique
+// WalletTransaction.reference.
+export async function handlePaystackWebhook(eventType: string, data: { id: number; reference: string }) {
+  const eventId = `${eventType}:${data.id}`;
+
+  const existing = await prisma.paystackEvent.findUnique({ where: { eventId } });
+  if (existing?.status === "PROCESSED") {
+    return;
+  }
+
+  if (!existing) {
+    await prisma.paystackEvent.create({
+      data: { eventId, eventType, payload: data as unknown as Prisma.InputJsonValue, status: "RECEIVED" },
+    });
+  }
+
+  try {
+    if (eventType === "charge.success") {
+      await processChargeSuccess(data.reference);
+    }
+    await prisma.paystackEvent.update({
+      where: { eventId },
+      data: { status: "PROCESSED", processedAt: new Date() },
+    });
+  } catch (err) {
+    await prisma.paystackEvent.update({
+      where: { eventId },
+      data: { status: "FAILED", error: err instanceof Error ? err.message : String(err) },
+    });
+    throw err;
+  }
+}
+
+// Re-verifies against the Paystack API rather than trusting the webhook body's amount —
+// the signature check proves the request came from Paystack, but the source of truth
+// for "did this transaction actually succeed, for how much" is the verify endpoint.
+async function processChargeSuccess(reference: string) {
+  const verified = await paystack.verifyTransaction(reference);
+  if (verified.status !== "success") {
+    throw new Error(`Transaction ${reference} verify status is "${verified.status}", not "success"`);
+  }
+
+  const userId = (verified.metadata as { userId?: string } | null)?.userId;
+  if (!userId) {
+    throw new Error(`Transaction ${reference} is missing metadata.userId`);
+  }
+
+  try {
+    await prisma.$transaction((tx) => creditTopup(tx, userId, verified.amount, verified.reference));
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return; // reference already credited by a previous webhook delivery
+    }
+    throw err;
+  }
 }

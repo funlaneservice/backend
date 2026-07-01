@@ -9,5 +9,10 @@ export const userIdParamSchema = z.object({
   userId: z.string().uuid(),
 });
 
+export const initializeTopupBodySchema = z.object({
+  amount: z.number().int().positive("amount must be a positive integer, in kobo"),
+});
+
 export type ListTransactionsQuery = z.infer<typeof listTransactionsQuerySchema>;
 export type UserIdParam = z.infer<typeof userIdParamSchema>;
+export type InitializeTopupBody = z.infer<typeof initializeTopupBodySchema>;

@@ -1,5 +1,5 @@
 import cors from "cors";
-import express, { Express } from "express";
+import express, { Express, Request } from "express";
 import helmet from "helmet";
 import morgan from "morgan";
 import swaggerUi from "swagger-ui-express";
@@ -13,7 +13,15 @@ export function createApp(): Express {
 
   app.use(helmet());
   app.use(cors());
-  app.use(express.json());
+  app.use(
+    express.json({
+      // Paystack webhook signatures are HMAC'd over the exact raw request bytes,
+      // so we stash the buffer here rather than re-serializing the parsed body.
+      verify: (req, _res, buf) => {
+        (req as Request).rawBody = buf;
+      },
+    })
+  );
   app.use(express.urlencoded({ extended: true }));
   app.use(morgan(isProduction ? "combined" : "dev"));
 

@@ -29,6 +29,9 @@ export const env = {
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME,
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY,
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET,
+
+  paystackSecretKey: process.env.PAYSTACK_SECRET_KEY,
+  paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY,
 };
 
 export const isProduction = env.nodeEnv === "production";
