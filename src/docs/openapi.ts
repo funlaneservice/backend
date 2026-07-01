@@ -1055,7 +1055,7 @@ export const openapiDocument = {
         tags: ["Wallet"],
         summary: "Initialize a Paystack topup",
         description:
-          "Returns a Paystack-hosted checkout URL for the given amount (kobo). The wallet is credited asynchronously once /wallet/webhook/paystack verifies the resulting charge.success event — not immediately on this response.",
+          "Returns a Paystack-hosted checkout URL for the given amount, in Naira (converted to kobo before reaching Paystack — the wallet ledger itself stays kobo-denominated). The wallet is credited asynchronously once /wallet/webhook/paystack verifies the resulting charge.success event — not immediately on this response.",
         security: [{ bearerAuth: [] }],
         requestBody: { required: true, ...jsonContent(ref("TopupInitializeRequest")) },
         responses: {

@@ -10,7 +10,9 @@ export const userIdParamSchema = z.object({
 });
 
 export const initializeTopupBodySchema = z.object({
-  amount: z.number().int().positive("amount must be a positive integer, in kobo"),
+  // Naira (major unit), not kobo — matches what Paystack's own checkout page displays.
+  // Converted to kobo internally before the wallet ledger (which is kobo-denominated) is touched.
+  amount: z.number().positive("amount must be a positive number, in Naira"),
 });
 
 export type ListTransactionsQuery = z.infer<typeof listTransactionsQuerySchema>;

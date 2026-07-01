@@ -166,20 +166,24 @@ export async function getTransactions(userId: string, query: ListTransactionsQue
   };
 }
 
-export async function initializeTopup(userId: string, amountKobo: number) {
+// `amountNaira` is what the client types (major currency unit, matching what Paystack's
+// own checkout page displays) — converted to kobo only here, at the Paystack boundary.
+// The wallet ledger itself stays kobo-denominated throughout, per the rest of the system.
+export async function initializeTopup(userId: string, amountNaira: number) {
   if (!paystack.isPaystackConfigured()) {
     throw new ApiError(503, "Topups are not available yet — Paystack is not configured");
   }
 
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true } });
   const reference = `topup_${randomUUID()}`;
+  const amountKobo = Math.round(amountNaira * 100);
 
   const { authorizationUrl, accessCode } = await paystack.initializeTransaction({
     email: user.email,
     amountKobo,
     reference,
     metadata: { userId },
-    callbackUrl: `${env.frontendUrl}/wallet/topup/callback`,
+    callbackUrl: `${env.frontendUrl}/client/wallet`,
   });
 
   return { authorizationUrl, accessCode, reference };
