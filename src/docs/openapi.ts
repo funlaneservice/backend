@@ -21,6 +21,7 @@ import {
   rejectRequestSchema,
 } from "../modules/requests/requests.schema";
 import { initializeTopupBodySchema } from "../modules/wallet/wallet.schema";
+import { changePasswordSchema, updateProfileSchema } from "../modules/settings/settings.schema";
 
 // `any` param sidesteps a TS instantiation blowup (multi-minute OOM) inferring zodToJsonSchema's generic return type against these chained schemas.
 function toSchema(zodSchema: any): Record<string, unknown> {
@@ -94,6 +95,7 @@ export const openapiDocument = {
     { name: "Users", description: "Admin management of all user accounts (CLIENT/AGENT/ADMIN)" },
     { name: "Requests", description: "Client-submitted travel requests" },
     { name: "Wallet", description: "Client wallet balance and transaction ledger" },
+    { name: "Settings", description: "Self-service profile and password management for CLIENT/AGENT accounts" },
   ],
   components: {
     securitySchemes: {
@@ -378,6 +380,25 @@ export const openapiDocument = {
         },
         required: ["requests", "pagination"],
       },
+      SettingsProfileView: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          email: { type: "string", format: "email" },
+          name: { type: "string" },
+          phone: { type: "string" },
+          role: { type: "string", enum: ["CLIENT", "AGENT", "ADMIN"] },
+          status: { type: "string", enum: ["ACTIVE", "SUSPENDED"] },
+        },
+        required: ["id", "email", "name", "phone", "role", "status"],
+      },
+      SettingsProfileResponse: {
+        type: "object",
+        properties: { user: ref("SettingsProfileView") },
+        required: ["user"],
+      },
+      UpdateProfileRequest: toSchema(updateProfileSchema),
+      ChangePasswordRequest: toSchema(changePasswordSchema),
     },
   },
   paths: {
@@ -1113,6 +1134,53 @@ export const openapiDocument = {
           "400": responses.validation,
           "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
           "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/settings/me": {
+      get: {
+        tags: ["Settings"],
+        summary: "Get the authenticated user's profile",
+        description: "Requires an authenticated CLIENT or AGENT.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Current profile", ...jsonContent(ref("SettingsProfileResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not a client or agent", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/settings/profile": {
+      patch: {
+        tags: ["Settings"],
+        summary: "Update the authenticated user's name/phone",
+        description: "Requires an authenticated CLIENT or AGENT. Email is not editable here.",
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, ...jsonContent(ref("UpdateProfileRequest")) },
+        responses: {
+          "200": { description: "Profile updated", ...jsonContent(ref("SettingsProfileResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not a client or agent", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/settings/change-password": {
+      post: {
+        tags: ["Settings"],
+        summary: "Change the authenticated user's password",
+        description:
+          "Requires an authenticated CLIENT or AGENT and the current password. Also invalidates all previously-issued JWTs for the account (requireAuth rejects tokens issued before the change), same as /auth/reset-password.",
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, ...jsonContent(ref("ChangePasswordRequest")) },
+        responses: {
+          "200": { description: "Password changed", ...jsonContent(ref("MessageResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing/invalid/expired token, or current password is incorrect", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not a client or agent", ...jsonContent(ref("ErrorResponse")) },
           "500": responses.serverError,
         },
       },

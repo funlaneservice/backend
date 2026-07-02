@@ -5,6 +5,7 @@ import { agentRouter, agentAdminRouter } from "../modules/agent/agent.routes";
 import { usersRouter } from "../modules/users/users.routes";
 import { requestsRouter } from "../modules/requests/requests.routes";
 import { walletRouter } from "../modules/wallet/wallet.routes";
+import { settingsRouter } from "../modules/settings/settings.routes";
 
 export const apiRouter = Router();
 
@@ -19,3 +20,4 @@ apiRouter.use("/admin/agents", agentAdminRouter);
 apiRouter.use("/admin/users", usersRouter);
 apiRouter.use("/requests", requestsRouter);
 apiRouter.use("/wallet", walletRouter);
+apiRouter.use("/settings", settingsRouter);
