@@ -56,6 +56,11 @@ export const requestOptionParamSchema = z.object({
   optionId: z.string().uuid(),
 });
 
+export const addQuoteOptionFromOfferSchema = z.object({
+  offerId: z.string().min(1),
+  label: z.string().min(1).max(100),
+});
+
 export const rejectRequestSchema = z.object({
   reason: z.string().min(3).max(500),
 });
@@ -108,6 +113,7 @@ export type AdminListRequestsQuery = z.infer<typeof adminListRequestsQuerySchema
 export type QueueQuery = z.infer<typeof queueQuerySchema>;
 export type QuoteOptionInput = z.infer<typeof quoteOptionInputSchema>;
 export type RequestOptionParam = z.infer<typeof requestOptionParamSchema>;
+export type AddQuoteOptionFromOfferInput = z.infer<typeof addQuoteOptionFromOfferSchema>;
 export type RejectRequestInput = z.infer<typeof rejectRequestSchema>;
 export type ApproveRequestInput = z.infer<typeof approveRequestSchema>;
 export type CancelRequestInput = z.infer<typeof cancelRequestSchema>;

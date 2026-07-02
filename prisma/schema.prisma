@@ -196,6 +196,7 @@ model QuoteOption {
   price         Int
   departureTime DateTime
   details       String?
+  duffelOfferId String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
