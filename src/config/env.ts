@@ -32,8 +32,6 @@ export const env = {
 
   paystackSecretKey: process.env.PAYSTACK_SECRET_KEY,
   paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY,
-
-  duffelApiKey: process.env.DUFFEL_API_KEY,
 };
 
 export const isProduction = env.nodeEnv === "production";

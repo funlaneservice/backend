@@ -1,13 +1,11 @@
 import { randomUUID } from "crypto";
 import { Prisma, RequestStatus } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
-import * as duffel from "../../lib/duffel";
 import * as notificationsService from "../notifications/notifications.service";
 import { getSignedDownloadUrl, uploadBuffer } from "../uploads/uploads.service";
 import * as walletService from "../wallet/wallet.service";
 import { ApiError } from "../../utils/ApiError";
 import {
-  AddQuoteOptionFromOfferInput,
   AdminListRequestsQuery,
   ApproveRequestInput,
   CancelRequestInput,
@@ -18,41 +16,6 @@ import {
   RejectRequestInput,
 } from "./requests.schema";
 
-const BUDGET_TIER_TO_CABIN_CLASS: Record<string, duffel.DuffelCabinClass> = {
-  ECONOMY: "economy",
-  PREMIUM_ECONOMY: "premium_economy",
-  BUSINESS: "business",
-  FIRST: "first",
-};
-
-function parseDurationMinutes(duration: string | null | undefined): number | null {
-  if (!duration) return null;
-  const match = /^PT(?:(\d+)H)?(?:(\d+)M)?$/.exec(duration);
-  if (!match) return null;
-  const hours = Number(match[1] ?? 0);
-  const minutes = Number(match[2] ?? 0);
-  return hours * 60 + minutes;
-}
-
-function summarizeOffer(offer: duffel.DuffelOffer, cabinClass: duffel.DuffelCabinClass) {
-  const firstSlice = offer.slices[0];
-  const firstSegment = firstSlice?.segments[0];
-  const lastSegment = firstSlice?.segments[firstSlice.segments.length - 1];
-
-  return {
-    offerId: offer.id,
-    airline: offer.owner.name,
-    price: Number(offer.total_amount),
-    currency: offer.total_currency,
-    departureTime: firstSegment?.departing_at ?? null,
-    arrivalTime: lastSegment?.arriving_at ?? null,
-    durationMinutes: parseDurationMinutes(firstSlice?.duration),
-    stops: Math.max((firstSlice?.segments.length ?? 1) - 1, 0),
-    cabinClass,
-    expiresAt: offer.expires_at,
-  };
-}
-
 const OPTIONS_EDITABLE_STATUSES: RequestStatus[] = ["PENDING", "OPTIONS_SENT"];
 
 function toQuoteOptionView(option: {
@@ -62,7 +25,6 @@ function toQuoteOptionView(option: {
   price: number;
   departureTime: Date;
   details: string | null;
-  duffelOfferId: string | null;
   createdAt: Date;
 }) {
   return {
@@ -72,7 +34,6 @@ function toQuoteOptionView(option: {
     price: option.price,
     departureTime: option.departureTime,
     details: option.details,
-    duffelOfferId: option.duffelOfferId,
     createdAt: option.createdAt,
   };
 }
@@ -111,7 +72,6 @@ async function toRequestView(request: {
     price: number;
     departureTime: Date;
     details: string | null;
-    duffelOfferId: string | null;
     createdAt: Date;
   }[];
 }) {
@@ -364,90 +324,6 @@ export async function addQuoteOption(agentId: string, requestId: string, input: 
       price: input.price,
       departureTime: input.departureTime,
       details: input.details,
-    },
-  });
-
-  return toQuoteOptionView(option);
-}
-
-export async function searchFlightsForRequest(requestId: string) {
-  const request = await prisma.travelRequest.findUnique({
-    where: { id: requestId },
-    include: { _count: { select: { passengers: true } } },
-  });
-  if (!request) {
-    throw new ApiError(404, "Request not found");
-  }
-
-  const [originIata, destinationIata] = await Promise.all([
-    duffel.suggestPlaceIataCode(request.origin),
-    duffel.suggestPlaceIataCode(request.destination),
-  ]);
-
-  if (!originIata) {
-    throw new ApiError(422, `Could not resolve an airport for origin "${request.origin}"`);
-  }
-  if (!destinationIata) {
-    throw new ApiError(422, `Could not resolve an airport for destination "${request.destination}"`);
-  }
-
-  const cabinClass = BUDGET_TIER_TO_CABIN_CLASS[request.budgetTier] ?? "economy";
-
-  const offers = await duffel.searchOffers({
-    originIata,
-    destinationIata,
-    departureDate: request.departureDate,
-    returnDate: request.returnDate ?? undefined,
-    cabinClass,
-    passengerCount: Math.max(request._count.passengers, 1),
-  });
-
-  return offers
-    .map((offer) => summarizeOffer(offer, cabinClass))
-    .sort((a, b) => a.price - b.price);
-}
-
-export async function addQuoteOptionFromOffer(
-  agentId: string,
-  requestId: string,
-  input: AddQuoteOptionFromOfferInput
-) {
-  await getAssignedRequestOrThrow(agentId, requestId, OPTIONS_EDITABLE_STATUSES);
-
-  let offer: duffel.DuffelOffer;
-  try {
-    offer = await duffel.getOffer(input.offerId);
-  } catch {
-    throw new ApiError(409, "This flight offer has expired, please search again");
-  }
-
-  if (offer.total_currency !== "NGN") {
-    throw new ApiError(
-      422,
-      `This offer is priced in ${offer.total_currency}, not NGN — not supported yet`
-    );
-  }
-
-  const firstSlice = offer.slices[0];
-  const firstSegment = firstSlice?.segments[0];
-  if (!firstSegment) {
-    throw new ApiError(422, "This offer has no flight segments");
-  }
-
-  const priceKobo = Math.round(Number(offer.total_amount) * 100);
-  const details = firstSlice.segments
-    .map((s) => `${s.origin.iata_code} → ${s.destination.iata_code}`)
-    .join(", ");
-
-  const option = await prisma.quoteOption.create({
-    data: {
-      requestId,
-      label: input.label,
-      airline: offer.owner.name,
-      price: priceKobo,
-      departureTime: new Date(firstSegment.departing_at),
-      details,
-      duffelOfferId: offer.id,
     },
   });
 

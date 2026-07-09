@@ -4,7 +4,6 @@ import { asyncHandler } from "../../utils/asyncHandler";
 import { sendResponse } from "../../utils/apiResponse";
 import * as requestsService from "./requests.service";
 import {
-  addQuoteOptionFromOfferSchema,
   adminListRequestsQuerySchema,
   approveRequestSchema,
   cancelRequestSchema,
@@ -90,27 +89,6 @@ export const addQuoteOptionHandler = asyncHandler(async (req: Request, res: Resp
   const { id } = requestIdParamSchema.parse(req.params);
   const input = quoteOptionInputSchema.parse(req.body);
   const option = await requestsService.addQuoteOption(req.user.userId, id, input);
-  sendResponse(res, 201, { option });
-});
-
-export const searchFlightsHandler = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.user) {
-    throw new ApiError(401, "Not authenticated");
-  }
-
-  const { id } = requestIdParamSchema.parse(req.params);
-  const offers = await requestsService.searchFlightsForRequest(id);
-  sendResponse(res, 200, { offers });
-});
-
-export const addQuoteOptionFromOfferHandler = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.user) {
-    throw new ApiError(401, "Not authenticated");
-  }
-
-  const { id } = requestIdParamSchema.parse(req.params);
-  const input = addQuoteOptionFromOfferSchema.parse(req.body);
-  const option = await requestsService.addQuoteOptionFromOffer(req.user.userId, id, input);
   sendResponse(res, 201, { option });
 });
 
