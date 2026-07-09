@@ -849,7 +849,7 @@ export const openapiDocument = {
         tags: ["Requests"],
         summary: "Claim an unassigned request from the queue",
         description:
-          "Requires an authenticated AGENT. Atomic conditional update — only succeeds if the request is still PENDING and unassigned at the moment of the call, so two agents racing on the same request can't both win.",
+          "Requires an authenticated AGENT (not ADMIN — admins should use PATCH /requests/{id}/assign to assign a specific agent instead of claiming for themselves). Atomic conditional update — only succeeds if the request is still PENDING and unassigned at the moment of the call, so two agents racing on the same request can't both win.",
         security: [{ bearerAuth: [] }],
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         responses: {
@@ -867,7 +867,7 @@ export const openapiDocument = {
         tags: ["Requests"],
         summary: "Add a quote option to a request",
         description:
-          "Requires the AGENT currently assigned to this request. Only allowed while the request is PENDING or OPTIONS_SENT.",
+          "Requires the AGENT currently assigned to this request, or an ADMIN acting on any request. Only allowed while the request is PENDING or OPTIONS_SENT.",
         security: [{ bearerAuth: [] }],
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         requestBody: { required: true, ...jsonContent(ref("AddQuoteOptionRequest")) },
@@ -887,7 +887,7 @@ export const openapiDocument = {
         tags: ["Requests"],
         summary: "Remove a quote option from a request",
         description:
-          "Requires the AGENT currently assigned to this request. Only allowed while the request is PENDING or OPTIONS_SENT.",
+          "Requires the AGENT currently assigned to this request, or an ADMIN acting on any request. Only allowed while the request is PENDING or OPTIONS_SENT.",
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
@@ -908,7 +908,7 @@ export const openapiDocument = {
         tags: ["Requests"],
         summary: "Send the added quote options to the client",
         description:
-          "Requires the AGENT currently assigned to this request. Transitions PENDING -> OPTIONS_SENT. Fails if no quote options have been added yet.",
+          "Requires the AGENT currently assigned to this request, or an ADMIN acting on any request. Transitions PENDING -> OPTIONS_SENT. Fails if no quote options have been added yet.",
         security: [{ bearerAuth: [] }],
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         responses: {
@@ -927,7 +927,7 @@ export const openapiDocument = {
         tags: ["Requests"],
         summary: "Reject the sent quote options",
         description:
-          "Requires the request's own CLIENT. Reverts status from OPTIONS_SENT back to PENDING — the same agent stays assigned and revises the quote.",
+          "Requires the request's own CLIENT, or an ADMIN acting on any request. Reverts status from OPTIONS_SENT back to PENDING — the same agent stays assigned and revises the quote.",
         security: [{ bearerAuth: [] }],
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         requestBody: { required: true, ...jsonContent(ref("RejectRequestRequest")) },
@@ -946,7 +946,7 @@ export const openapiDocument = {
         tags: ["Requests"],
         summary: "Approve a quote option, locking wallet funds",
         description:
-          "Requires the request's own CLIENT. Only allowed from OPTIONS_SENT. Locks the option's price against the client's wallet (409 if available balance is insufficient) and transitions to APPROVED_LOCKED, atomically with the wallet lock.",
+          "Requires the request's own CLIENT, or an ADMIN acting on any request (funds are always locked against the request's own client, never the admin). Only allowed from OPTIONS_SENT. Locks the option's price against the client's wallet (409 if available balance is insufficient) and transitions to APPROVED_LOCKED, atomically with the wallet lock.",
         security: [{ bearerAuth: [] }],
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         requestBody: { required: true, ...jsonContent(ref("ApproveRequestRequest")) },
@@ -965,7 +965,7 @@ export const openapiDocument = {
         tags: ["Requests"],
         summary: "Cancel an approved request, releasing locked wallet funds",
         description:
-          "Requires the request's own CLIENT. Only allowed from APPROVED_LOCKED (blocked once ISSUED). Releases the locked funds back to available balance and transitions to CANCELLED.",
+          "Requires the request's own CLIENT, or an ADMIN acting on any request. Only allowed from APPROVED_LOCKED (blocked once ISSUED) — for other statuses, admins should use POST /requests/{id}/admin-cancel instead. Releases the locked funds back to available balance and transitions to CANCELLED.",
         security: [{ bearerAuth: [] }],
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         requestBody: { required: true, ...jsonContent(ref("CancelRequestRequest")) },
@@ -1044,7 +1044,7 @@ export const openapiDocument = {
         tags: ["Requests"],
         summary: "Upload the issued ticket, transitioning to ISSUED",
         description:
-          "Requires the AGENT currently assigned to this request. Only allowed from APPROVED_LOCKED. Multipart upload, field name `ticket`.",
+          "Requires the AGENT currently assigned to this request, or an ADMIN acting on any request. Only allowed from APPROVED_LOCKED. Multipart upload, field name `ticket`.",
         security: [{ bearerAuth: [] }],
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         requestBody: {
@@ -1075,7 +1075,7 @@ export const openapiDocument = {
         tags: ["Requests"],
         summary: "Mark a request complete, capturing wallet funds",
         description:
-          "Requires the AGENT currently assigned to this request. Only allowed from ISSUED. Captures the locked funds (moves them out of the wallet entirely) and transitions to COMPLETED, setting payoutStatus to PENDING.",
+          "Requires the AGENT currently assigned to this request, or an ADMIN acting on any request. Only allowed from ISSUED. Captures the locked funds (moves them out of the wallet entirely) and transitions to COMPLETED, setting payoutStatus to PENDING.",
         security: [{ bearerAuth: [] }],
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         responses: {

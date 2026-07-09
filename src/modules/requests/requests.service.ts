@@ -117,7 +117,8 @@ async function toRequestView(request: {
 }
 
 async function getAssignedRequestOrThrow(
-  agentId: string,
+  callerId: string,
+  callerRole: string,
   requestId: string,
   allowedStatuses: RequestStatus[]
 ) {
@@ -126,7 +127,7 @@ async function getAssignedRequestOrThrow(
   if (!request) {
     throw new ApiError(404, "Request not found");
   }
-  if (request.assignedAgentId !== agentId) {
+  if (callerRole !== "ADMIN" && request.assignedAgentId !== callerId) {
     throw new ApiError(403, "You are not assigned to this request");
   }
   if (!allowedStatuses.includes(request.status)) {
@@ -314,8 +315,13 @@ export async function claimRequest(agentId: string, id: string) {
   return getRequestById({ userId: agentId, role: "AGENT" }, id);
 }
 
-export async function addQuoteOption(agentId: string, requestId: string, input: QuoteOptionInput) {
-  await getAssignedRequestOrThrow(agentId, requestId, OPTIONS_EDITABLE_STATUSES);
+export async function addQuoteOption(
+  callerId: string,
+  callerRole: string,
+  requestId: string,
+  input: QuoteOptionInput
+) {
+  await getAssignedRequestOrThrow(callerId, callerRole, requestId, OPTIONS_EDITABLE_STATUSES);
 
   const option = await prisma.quoteOption.create({
     data: {
@@ -331,7 +337,12 @@ export async function addQuoteOption(agentId: string, requestId: string, input: 
   return toQuoteOptionView(option);
 }
 
-export async function deleteQuoteOption(agentId: string, requestId: string, optionId: string) {
+export async function deleteQuoteOption(
+  callerId: string,
+  callerRole: string,
+  requestId: string,
+  optionId: string
+) {
   await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT 1 FROM travel_requests WHERE id = ${requestId} FOR UPDATE`;
 
@@ -339,7 +350,7 @@ export async function deleteQuoteOption(agentId: string, requestId: string, opti
     if (!request) {
       throw new ApiError(404, "Request not found");
     }
-    if (request.assignedAgentId !== agentId) {
+    if (callerRole !== "ADMIN" && request.assignedAgentId !== callerId) {
       throw new ApiError(403, "You are not assigned to this request");
     }
     if (!OPTIONS_EDITABLE_STATUSES.includes(request.status)) {
@@ -365,8 +376,8 @@ export async function deleteQuoteOption(agentId: string, requestId: string, opti
   });
 }
 
-export async function sendOptions(agentId: string, requestId: string) {
-  await getAssignedRequestOrThrow(agentId, requestId, ["PENDING"]);
+export async function sendOptions(callerId: string, callerRole: string, requestId: string) {
+  await getAssignedRequestOrThrow(callerId, callerRole, requestId, ["PENDING"]);
 
   const optionCount = await prisma.quoteOption.count({ where: { requestId } });
   if (optionCount === 0) {
@@ -384,12 +395,17 @@ export async function sendOptions(agentId: string, requestId: string) {
   return toRequestView(updated);
 }
 
-export async function approveOption(clientId: string, requestId: string, input: ApproveRequestInput) {
+export async function approveOption(
+  callerId: string,
+  callerRole: string,
+  requestId: string,
+  input: ApproveRequestInput
+) {
   const updated = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT 1 FROM travel_requests WHERE id = ${requestId} FOR UPDATE`;
 
     const request = await tx.travelRequest.findUnique({ where: { id: requestId } });
-    if (!request || request.clientId !== clientId) {
+    if (!request || (callerRole !== "ADMIN" && request.clientId !== callerId)) {
       throw new ApiError(404, "Request not found");
     }
     if (request.status !== "OPTIONS_SENT") {
@@ -401,7 +417,7 @@ export async function approveOption(clientId: string, requestId: string, input: 
       throw new ApiError(404, "Quote option not found");
     }
 
-    await walletService.lockFunds(tx, clientId, option.price, requestId);
+    await walletService.lockFunds(tx, request.clientId, option.price, requestId);
 
     return tx.travelRequest.update({
       where: { id: requestId },
@@ -417,12 +433,17 @@ export async function approveOption(clientId: string, requestId: string, input: 
   return toRequestView(updated);
 }
 
-export async function cancelRequest(clientId: string, requestId: string, input: CancelRequestInput) {
+export async function cancelRequest(
+  callerId: string,
+  callerRole: string,
+  requestId: string,
+  input: CancelRequestInput
+) {
   const updated = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT 1 FROM travel_requests WHERE id = ${requestId} FOR UPDATE`;
 
     const request = await tx.travelRequest.findUnique({ where: { id: requestId } });
-    if (!request || request.clientId !== clientId) {
+    if (!request || (callerRole !== "ADMIN" && request.clientId !== callerId)) {
       throw new ApiError(404, "Request not found");
     }
     if (request.status !== "APPROVED_LOCKED") {
@@ -434,7 +455,7 @@ export async function cancelRequest(clientId: string, requestId: string, input: 
 
     const option = await tx.quoteOption.findUniqueOrThrow({ where: { id: request.approvedOptionId } });
 
-    await walletService.releaseFunds(tx, clientId, option.price, requestId);
+    await walletService.releaseFunds(tx, request.clientId, option.price, requestId);
 
     return tx.travelRequest.update({
       where: { id: requestId },
@@ -539,8 +560,13 @@ export async function adminForceStatus(adminId: string, requestId: string, input
   return toRequestView(updated);
 }
 
-export async function issueTicket(agentId: string, requestId: string, file: Express.Multer.File) {
-  await getAssignedRequestOrThrow(agentId, requestId, ["APPROVED_LOCKED"]);
+export async function issueTicket(
+  callerId: string,
+  callerRole: string,
+  requestId: string,
+  file: Express.Multer.File
+) {
+  await getAssignedRequestOrThrow(callerId, callerRole, requestId, ["APPROVED_LOCKED"]);
 
   const ticketPdfKey = await uploadBuffer(`tickets/${randomUUID()}`, file.buffer, file.mimetype);
 
@@ -555,7 +581,7 @@ export async function issueTicket(agentId: string, requestId: string, file: Expr
   return toRequestView(updated);
 }
 
-export async function completeRequest(agentId: string, requestId: string) {
+export async function completeRequest(callerId: string, callerRole: string, requestId: string) {
   const updated = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT 1 FROM travel_requests WHERE id = ${requestId} FOR UPDATE`;
 
@@ -563,7 +589,7 @@ export async function completeRequest(agentId: string, requestId: string) {
     if (!request) {
       throw new ApiError(404, "Request not found");
     }
-    if (request.assignedAgentId !== agentId) {
+    if (callerRole !== "ADMIN" && request.assignedAgentId !== callerId) {
       throw new ApiError(403, "You are not assigned to this request");
     }
     if (request.status !== "ISSUED") {
@@ -587,10 +613,15 @@ export async function completeRequest(agentId: string, requestId: string) {
   return toRequestView(updated);
 }
 
-export async function rejectOptions(clientId: string, requestId: string, input: RejectRequestInput) {
+export async function rejectOptions(
+  callerId: string,
+  callerRole: string,
+  requestId: string,
+  input: RejectRequestInput
+) {
   const request = await prisma.travelRequest.findUnique({ where: { id: requestId } });
 
-  if (!request || request.clientId !== clientId) {
+  if (!request || (callerRole !== "ADMIN" && request.clientId !== callerId)) {
     throw new ApiError(404, "Request not found");
   }
   if (request.status !== "OPTIONS_SENT") {

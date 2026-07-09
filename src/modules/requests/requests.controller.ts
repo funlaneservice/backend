@@ -90,7 +90,7 @@ export const addQuoteOptionHandler = asyncHandler(async (req: Request, res: Resp
 
   const { id } = requestIdParamSchema.parse(req.params);
   const input = quoteOptionInputSchema.parse(req.body);
-  const option = await requestsService.addQuoteOption(req.user.userId, id, input);
+  const option = await requestsService.addQuoteOption(req.user.userId, req.user.role, id, input);
   sendResponse(res, 201, { option });
 });
 
@@ -100,7 +100,7 @@ export const deleteQuoteOptionHandler = asyncHandler(async (req: Request, res: R
   }
 
   const { id, optionId } = requestOptionParamSchema.parse(req.params);
-  await requestsService.deleteQuoteOption(req.user.userId, id, optionId);
+  await requestsService.deleteQuoteOption(req.user.userId, req.user.role, id, optionId);
   sendResponse(res, 200, { message: "Quote option deleted" });
 });
 
@@ -110,7 +110,7 @@ export const sendOptionsHandler = asyncHandler(async (req: Request, res: Respons
   }
 
   const { id } = requestIdParamSchema.parse(req.params);
-  const request = await requestsService.sendOptions(req.user.userId, id);
+  const request = await requestsService.sendOptions(req.user.userId, req.user.role, id);
   sendResponse(res, 200, { request });
 });
 
@@ -121,7 +121,7 @@ export const rejectRequestHandler = asyncHandler(async (req: Request, res: Respo
 
   const { id } = requestIdParamSchema.parse(req.params);
   const input = rejectRequestSchema.parse(req.body);
-  const request = await requestsService.rejectOptions(req.user.userId, id, input);
+  const request = await requestsService.rejectOptions(req.user.userId, req.user.role, id, input);
   sendResponse(res, 200, { request });
 });
 
@@ -132,7 +132,7 @@ export const approveRequestHandler = asyncHandler(async (req: Request, res: Resp
 
   const { id } = requestIdParamSchema.parse(req.params);
   const input = approveRequestSchema.parse(req.body);
-  const request = await requestsService.approveOption(req.user.userId, id, input);
+  const request = await requestsService.approveOption(req.user.userId, req.user.role, id, input);
   sendResponse(res, 200, { request });
 });
 
@@ -143,7 +143,7 @@ export const cancelRequestHandler = asyncHandler(async (req: Request, res: Respo
 
   const { id } = requestIdParamSchema.parse(req.params);
   const input = cancelRequestSchema.parse(req.body);
-  const request = await requestsService.cancelRequest(req.user.userId, id, input);
+  const request = await requestsService.cancelRequest(req.user.userId, req.user.role, id, input);
   sendResponse(res, 200, { request });
 });
 
@@ -191,7 +191,7 @@ export const issueTicketHandler = asyncHandler(async (req: Request, res: Respons
   }
 
   const { id } = requestIdParamSchema.parse(req.params);
-  const request = await requestsService.issueTicket(req.user.userId, id, file);
+  const request = await requestsService.issueTicket(req.user.userId, req.user.role, id, file);
   sendResponse(res, 200, { request });
 });
 
@@ -201,6 +201,6 @@ export const completeRequestHandler = asyncHandler(async (req: Request, res: Res
   }
 
   const { id } = requestIdParamSchema.parse(req.params);
-  const request = await requestsService.completeRequest(req.user.userId, id);
+  const request = await requestsService.completeRequest(req.user.userId, req.user.role, id);
   sendResponse(res, 200, { request });
 });
