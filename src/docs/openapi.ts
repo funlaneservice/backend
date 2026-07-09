@@ -15,6 +15,8 @@ import {
 import { agentLoginSchema, createAgentSchema } from "../modules/agent/agent.schema";
 import { changeUserRoleSchema, updateUserSchema } from "../modules/users/users.schema";
 import {
+  adminForceStatusSchema,
+  adminReassignRequestSchema,
   approveRequestSchema,
   cancelRequestSchema,
   quoteOptionInputSchema,
@@ -276,6 +278,8 @@ export const openapiDocument = {
       RejectRequestRequest: toSchema(rejectRequestSchema),
       ApproveRequestRequest: toSchema(approveRequestSchema),
       CancelRequestRequest: toSchema(cancelRequestSchema),
+      AdminReassignRequestRequest: toSchema(adminReassignRequestSchema),
+      AdminForceStatusRequest: toSchema(adminForceStatusSchema),
       WalletView: {
         type: "object",
         properties: {
@@ -971,6 +975,66 @@ export const openapiDocument = {
           "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
           "404": { description: "Request not found", ...jsonContent(ref("ErrorResponse")) },
           "409": { description: "Request is not APPROVED_LOCKED", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests/{id}/admin-cancel": {
+      post: {
+        tags: ["Requests"],
+        summary: "Force-cancel any request as an admin",
+        description:
+          "Requires an authenticated ADMIN. Works on PENDING, OPTIONS_SENT, or APPROVED_LOCKED requests regardless of owner (blocked once ISSUED, COMPLETED, or CANCELLED). Releases any locked wallet funds and transitions to CANCELLED.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: { required: true, ...jsonContent(ref("CancelRequestRequest")) },
+        responses: {
+          "200": { description: "Request cancelled and any locked funds released", ...jsonContent(ref("RequestResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Caller is not an ADMIN", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "Request not found", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "Request is ISSUED, COMPLETED, or already CANCELLED", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests/{id}/assign": {
+      patch: {
+        tags: ["Requests"],
+        summary: "Reassign or unassign the agent on a request",
+        description:
+          "Requires an authenticated ADMIN. Bypasses the normal claim rule (agents may only self-claim unassigned PENDING requests). Pass agentId: null to unassign back to the shared queue. Blocked once the request is COMPLETED or CANCELLED.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: { required: true, ...jsonContent(ref("AdminReassignRequestRequest")) },
+        responses: {
+          "200": { description: "Agent reassigned", ...jsonContent(ref("RequestResponse")) },
+          "400": { description: "agentId does not belong to an active AGENT", ...jsonContent(ref("ErrorResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Caller is not an ADMIN", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "Request not found", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "Request is COMPLETED or CANCELLED", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/requests/{id}/status": {
+      patch: {
+        tags: ["Requests"],
+        summary: "Force a request directly into any status",
+        description:
+          "Requires an authenticated ADMIN. Bypasses the normal state machine entirely and does NOT lock, release, or capture wallet funds — use with care, and reconcile the wallet manually via the admin wallet views if the forced status crosses an APPROVED_LOCKED/COMPLETED boundary.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        requestBody: { required: true, ...jsonContent(ref("AdminForceStatusRequest")) },
+        responses: {
+          "200": { description: "Status forced", ...jsonContent(ref("RequestResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Caller is not an ADMIN", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "Request not found", ...jsonContent(ref("ErrorResponse")) },
+          "409": { description: "Request is already in the requested status", ...jsonContent(ref("ErrorResponse")) },
           "500": responses.serverError,
         },
       },

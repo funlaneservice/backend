@@ -6,6 +6,7 @@ import { getSignedDownloadUrl, uploadBuffer } from "../uploads/uploads.service";
 import * as walletService from "../wallet/wallet.service";
 import { ApiError } from "../../utils/ApiError";
 import {
+  AdminForceStatusInput,
   AdminListRequestsQuery,
   ApproveRequestInput,
   CancelRequestInput,
@@ -441,6 +442,99 @@ export async function cancelRequest(clientId: string, requestId: string, input: 
       include: { passengers: true, quoteOptions: true },
     });
   });
+
+  return toRequestView(updated);
+}
+
+export async function adminCancelRequest(adminId: string, requestId: string, input: CancelRequestInput) {
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT 1 FROM travel_requests WHERE id = ${requestId} FOR UPDATE`;
+
+    const request = await tx.travelRequest.findUnique({ where: { id: requestId } });
+    if (!request) {
+      throw new ApiError(404, "Request not found");
+    }
+    if (request.status === "COMPLETED" || request.status === "CANCELLED") {
+      throw new ApiError(409, `Cannot cancel a request that is already ${request.status}`);
+    }
+    if (request.status === "ISSUED") {
+      throw new ApiError(409, "Cannot cancel a request with an issued ticket");
+    }
+
+    if (request.status === "APPROVED_LOCKED") {
+      if (!request.approvedOptionId) {
+        throw new Error("APPROVED_LOCKED request is missing its approved option");
+      }
+      const option = await tx.quoteOption.findUniqueOrThrow({ where: { id: request.approvedOptionId } });
+      await walletService.releaseFunds(tx, request.clientId, option.price, requestId);
+    }
+
+    return tx.travelRequest.update({
+      where: { id: requestId },
+      data: { status: "CANCELLED", cancelledAt: new Date(), cancellationReason: input.reason },
+      include: { passengers: true, quoteOptions: true },
+    });
+  });
+
+  console.warn(`[requests] admin ${adminId} force-cancelled request ${requestId}: ${input.reason}`);
+
+  return toRequestView(updated);
+}
+
+export async function adminReassignAgent(adminId: string, requestId: string, agentId: string | null) {
+  const request = await prisma.travelRequest.findUnique({ where: { id: requestId } });
+  if (!request) {
+    throw new ApiError(404, "Request not found");
+  }
+  if (request.status === "COMPLETED" || request.status === "CANCELLED") {
+    throw new ApiError(409, `Cannot reassign a request that is already ${request.status}`);
+  }
+
+  if (agentId) {
+    const agent = await prisma.user.findUnique({ where: { id: agentId } });
+    if (!agent || agent.role !== "AGENT") {
+      throw new ApiError(400, "agentId must belong to an existing agent");
+    }
+    if (agent.status !== "ACTIVE") {
+      throw new ApiError(400, "Cannot assign to a non-active agent");
+    }
+  }
+
+  const updated = await prisma.travelRequest.update({
+    where: { id: requestId },
+    data: { assignedAgentId: agentId },
+    include: { passengers: true, quoteOptions: true },
+  });
+
+  console.warn(`[requests] admin ${adminId} reassigned request ${requestId} to agent ${agentId ?? "(unassigned)"}`);
+
+  return toRequestView(updated);
+}
+
+// Bypasses the normal state machine entirely — it does not lock, release, or capture
+// wallet funds, since a forced jump can cross those transitions in either direction.
+// The admin is responsible for reconciling wallet state via the wallet admin views if
+// the forced status crosses an APPROVED_LOCKED/COMPLETED boundary.
+export async function adminForceStatus(adminId: string, requestId: string, input: AdminForceStatusInput) {
+  const request = await prisma.travelRequest.findUnique({ where: { id: requestId } });
+  if (!request) {
+    throw new ApiError(404, "Request not found");
+  }
+  if (request.status === input.status) {
+    throw new ApiError(409, `Request is already ${input.status}`);
+  }
+
+  const updated = await prisma.travelRequest.update({
+    where: { id: requestId },
+    data: { status: input.status },
+    include: { passengers: true, quoteOptions: true },
+  });
+
+  console.warn(
+    `[requests] admin ${adminId} force-set request ${requestId} status ${request.status} -> ${input.status}${
+      input.reason ? `: ${input.reason}` : ""
+    }`
+  );
 
   return toRequestView(updated);
 }

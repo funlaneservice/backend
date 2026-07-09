@@ -68,6 +68,15 @@ export const cancelRequestSchema = z.object({
   reason: z.string().min(3).max(500),
 });
 
+export const adminReassignRequestSchema = z.object({
+  agentId: z.string().uuid().nullable(),
+});
+
+export const adminForceStatusSchema = z.object({
+  status: requestStatusSchema,
+  reason: z.string().min(3).max(500).optional(),
+});
+
 export const passengerInputSchema = z.object({
   fullName: z.string().min(2).max(100),
   passportNumber: z.string().min(5).max(20),
@@ -111,3 +120,5 @@ export type RequestOptionParam = z.infer<typeof requestOptionParamSchema>;
 export type RejectRequestInput = z.infer<typeof rejectRequestSchema>;
 export type ApproveRequestInput = z.infer<typeof approveRequestSchema>;
 export type CancelRequestInput = z.infer<typeof cancelRequestSchema>;
+export type AdminReassignRequestInput = z.infer<typeof adminReassignRequestSchema>;
+export type AdminForceStatusInput = z.infer<typeof adminForceStatusSchema>;

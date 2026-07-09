@@ -4,7 +4,9 @@ import { asyncHandler } from "../../utils/asyncHandler";
 import { sendResponse } from "../../utils/apiResponse";
 import * as requestsService from "./requests.service";
 import {
+  adminForceStatusSchema,
   adminListRequestsQuerySchema,
+  adminReassignRequestSchema,
   approveRequestSchema,
   cancelRequestSchema,
   createRequestSchema,
@@ -142,6 +144,39 @@ export const cancelRequestHandler = asyncHandler(async (req: Request, res: Respo
   const { id } = requestIdParamSchema.parse(req.params);
   const input = cancelRequestSchema.parse(req.body);
   const request = await requestsService.cancelRequest(req.user.userId, id, input);
+  sendResponse(res, 200, { request });
+});
+
+export const adminCancelRequestHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new ApiError(401, "Not authenticated");
+  }
+
+  const { id } = requestIdParamSchema.parse(req.params);
+  const input = cancelRequestSchema.parse(req.body);
+  const request = await requestsService.adminCancelRequest(req.user.userId, id, input);
+  sendResponse(res, 200, { request });
+});
+
+export const adminReassignAgentHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new ApiError(401, "Not authenticated");
+  }
+
+  const { id } = requestIdParamSchema.parse(req.params);
+  const input = adminReassignRequestSchema.parse(req.body);
+  const request = await requestsService.adminReassignAgent(req.user.userId, id, input.agentId);
+  sendResponse(res, 200, { request });
+});
+
+export const adminForceStatusHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new ApiError(401, "Not authenticated");
+  }
+
+  const { id } = requestIdParamSchema.parse(req.params);
+  const input = adminForceStatusSchema.parse(req.body);
+  const request = await requestsService.adminForceStatus(req.user.userId, id, input);
   sendResponse(res, 200, { request });
 });
 

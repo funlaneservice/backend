@@ -3,7 +3,10 @@ import { requireAuth, requireRole } from "../../middleware/auth.middleware";
 import { upload } from "../../middleware/upload.middleware";
 import {
   addQuoteOptionHandler,
+  adminCancelRequestHandler,
+  adminForceStatusHandler,
   adminListRequestsHandler,
+  adminReassignAgentHandler,
   approveRequestHandler,
   cancelRequestHandler,
   claimRequestHandler,
@@ -37,6 +40,9 @@ requestsRouter.post("/:id/send-options", requireAuth, requireRole("AGENT"), send
 requestsRouter.post("/:id/reject", requireAuth, requireRole("CLIENT"), rejectRequestHandler);
 requestsRouter.post("/:id/approve", requireAuth, requireRole("CLIENT"), approveRequestHandler);
 requestsRouter.post("/:id/cancel", requireAuth, requireRole("CLIENT"), cancelRequestHandler);
+requestsRouter.post("/:id/admin-cancel", requireAuth, requireRole("ADMIN"), adminCancelRequestHandler);
+requestsRouter.patch("/:id/assign", requireAuth, requireRole("ADMIN"), adminReassignAgentHandler);
+requestsRouter.patch("/:id/status", requireAuth, requireRole("ADMIN"), adminForceStatusHandler);
 requestsRouter.post(
   "/:id/ticket",
   requireAuth,
