@@ -81,11 +81,11 @@ export const passengerInputSchema = z.object({
   fullName: z.string().min(2).max(100),
   passportNumber: z.string().min(5).max(20),
   passportExpiry: z.coerce.date().refine((d) => d.getTime() > Date.now(), {
-    message: "passportExpiry must be in the future",
+    message: "Passport expiry must be in the future",
   }),
   nationality: z.string().min(2).max(56),
   dateOfBirth: z.coerce.date().refine((d) => d.getTime() < Date.now(), {
-    message: "dateOfBirth must be in the past",
+    message: "Date of birth must be in the past",
   }),
 });
 

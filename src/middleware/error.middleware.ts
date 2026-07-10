@@ -17,7 +17,10 @@ export function errorHandler(
   _next: NextFunction
 ): void {
   if (err instanceof ZodError) {
-    res.status(400).json({ statusCode: 400, message: "Validation failed", errors: err.flatten() });
+    const message = err.issues
+      .map((issue) => issue.message)
+      .join(", ");
+    res.status(400).json({ statusCode: 400, message });
     return;
   }
 
