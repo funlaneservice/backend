@@ -221,6 +221,7 @@ export const openapiDocument = {
         type: "object",
         properties: {
           id: { type: "string", format: "uuid" },
+          clientId: { type: "string", format: "uuid" },
           status: {
             type: "string",
             enum: ["PENDING", "OPTIONS_SENT", "APPROVED_LOCKED", "ISSUED", "COMPLETED", "CANCELLED"],
@@ -246,6 +247,7 @@ export const openapiDocument = {
         },
         required: [
           "id",
+          "clientId",
           "status",
           "origin",
           "destination",
@@ -340,6 +342,7 @@ export const openapiDocument = {
         type: "object",
         properties: {
           id: { type: "string", format: "uuid" },
+          clientId: { type: "string", format: "uuid" },
           status: {
             type: "string",
             enum: ["PENDING", "OPTIONS_SENT", "APPROVED_LOCKED", "ISSUED", "COMPLETED", "CANCELLED"],
@@ -357,6 +360,7 @@ export const openapiDocument = {
         },
         required: [
           "id",
+          "clientId",
           "status",
           "origin",
           "destination",
@@ -721,7 +725,7 @@ export const openapiDocument = {
         tags: ["Requests"],
         summary: "Submit a new travel request",
         description:
-          "Requires an authenticated CLIENT. Multipart upload: `passengers` is a JSON-encoded array of passenger objects, and `passportDocs` must contain exactly one file per passenger, in the same order.",
+          "Requires an authenticated CLIENT (creates the request under their own account), or an ADMIN creating a request on behalf of any client (must pass `clientId`, the id of an existing CLIENT user, in the form body). Multipart upload: `passengers` is a JSON-encoded array of passenger objects, and `passportDocs` must contain exactly one file per passenger, in the same order.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -730,6 +734,11 @@ export const openapiDocument = {
               schema: {
                 type: "object",
                 properties: {
+                  clientId: {
+                    type: "string",
+                    format: "uuid",
+                    description: "Required and only honored when the caller is an ADMIN; ignored for CLIENT callers, who always create the request under their own account.",
+                  },
                   origin: { type: "string" },
                   destination: { type: "string" },
                   departureDate: { type: "string", format: "date" },
@@ -755,9 +764,12 @@ export const openapiDocument = {
         },
         responses: {
           "201": { description: "Request created", ...jsonContent(ref("RequestResponse")) },
-          "400": responses.validation,
+          "400": {
+            description: "Validation error, or (ADMIN caller) clientId missing/not an existing client",
+            ...jsonContent(ref("ErrorResponse")),
+          },
           "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
-          "403": { description: "Authenticated user is not a client", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is neither a client nor an admin", ...jsonContent(ref("ErrorResponse")) },
           "500": responses.serverError,
         },
       },

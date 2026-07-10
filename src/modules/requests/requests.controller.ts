@@ -33,7 +33,7 @@ export const createRequestHandler = asyncHandler(async (req: Request, res: Respo
   const input = createRequestSchema.parse({ ...req.body, passengers });
   const files = (req.files as Express.Multer.File[]) ?? [];
 
-  const request = await requestsService.createRequest(req.user.userId, input, files);
+  const request = await requestsService.createRequest(req.user.userId, req.user.role, input, files);
   sendResponse(res, 201, { request });
 });
 

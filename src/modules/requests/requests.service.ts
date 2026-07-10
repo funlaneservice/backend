@@ -41,6 +41,7 @@ function toQuoteOptionView(option: {
 
 async function toRequestView(request: {
   id: string;
+  clientId: string;
   status: string;
   origin: string;
   destination: string;
@@ -87,6 +88,7 @@ async function toRequestView(request: {
 
   return {
     id: request.id,
+    clientId: request.clientId,
     status: request.status,
     origin: request.origin,
     destination: request.destination,
@@ -139,6 +141,7 @@ async function getAssignedRequestOrThrow(
 
 function toRequestSummaryView(request: {
   id: string;
+  clientId: string;
   status: string;
   origin: string;
   destination: string;
@@ -153,6 +156,7 @@ function toRequestSummaryView(request: {
 }) {
   return {
     id: request.id,
+    clientId: request.clientId,
     status: request.status,
     origin: request.origin,
     destination: request.destination,
@@ -172,10 +176,23 @@ function paginate(total: number, page: number, limit: number) {
 }
 
 export async function createRequest(
-  clientId: string,
+  callerId: string,
+  callerRole: string,
   input: CreateRequestInput,
   files: Express.Multer.File[]
 ) {
+  let clientId = callerId;
+  if (callerRole === "ADMIN") {
+    if (!input.clientId) {
+      throw new ApiError(400, "clientId is required when creating a request as an admin");
+    }
+    const client = await prisma.user.findUnique({ where: { id: input.clientId } });
+    if (!client || client.role !== "CLIENT") {
+      throw new ApiError(400, "clientId must belong to an existing client");
+    }
+    clientId = client.id;
+  }
+
   if (files.length !== input.passengers.length) {
     throw new ApiError(
       400,

@@ -91,6 +91,7 @@ export const passengerInputSchema = z.object({
 
 export const createRequestSchema = z
   .object({
+    clientId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
     origin: z.string().min(2).max(100),
     destination: z.string().min(2).max(100),
     departureDate: z.coerce.date(),

@@ -26,7 +26,7 @@ export const requestsRouter = Router();
 requestsRouter.post(
   "/",
   requireAuth,
-  requireRole("CLIENT"),
+  requireRole("CLIENT", "ADMIN"),
   upload.array("passportDocs"),
   createRequestHandler
 );
