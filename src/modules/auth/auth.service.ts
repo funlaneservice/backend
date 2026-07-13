@@ -2,7 +2,12 @@ import crypto from "crypto";
 import { prisma } from "../../lib/prisma";
 import { sendMailSafely } from "../../lib/mailer";
 import { issuePasswordResetToken, issueVerificationToken } from "../../lib/verificationTokens";
-import { isGoogleAuthConfigured, verifyGoogleIdToken } from "../../lib/googleAuth";
+import {
+  exchangeCodeForIdentity,
+  getGoogleAuthUrl,
+  GoogleIdentity,
+  isGoogleAuthConfigured,
+} from "../../lib/googleAuth";
 import { ApiError } from "../../utils/ApiError";
 import { signToken } from "../../utils/jwt";
 import { comparePassword, hashPassword } from "../../utils/password";
@@ -10,7 +15,6 @@ import { hashToken } from "../../utils/verificationToken";
 import { sendPasswordResetEmail, sendVerificationEmail } from "./auth.mailer";
 import {
   ForgotPasswordInput,
-  GoogleAuthInput,
   LoginInput,
   RegisterInput,
   ResendVerificationInput,
@@ -60,18 +64,29 @@ export async function login(input: LoginInput) {
   return { user: toPublicUser(user), token };
 }
 
-export async function googleAuth(input: GoogleAuthInput) {
+export function googleAuthUrl() {
+  if (!isGoogleAuthConfigured()) {
+    throw new ApiError(503, "Google sign-in is not configured");
+  }
+  return getGoogleAuthUrl();
+}
+
+export async function googleAuthCallback(code: string) {
   if (!isGoogleAuthConfigured()) {
     throw new ApiError(503, "Google sign-in is not configured");
   }
 
-  let identity;
+  let identity: GoogleIdentity;
   try {
-    identity = await verifyGoogleIdToken(input.idToken);
+    identity = await exchangeCodeForIdentity(code);
   } catch {
-    throw new ApiError(401, "Invalid Google ID token");
+    throw new ApiError(401, "Invalid or expired Google authorization code");
   }
 
+  return resolveGoogleIdentity(identity);
+}
+
+async function resolveGoogleIdentity(identity: GoogleIdentity) {
   if (!identity.emailVerified) {
     throw new ApiError(400, "Google account email is not verified");
   }

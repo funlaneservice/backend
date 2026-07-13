@@ -1,7 +1,6 @@
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
   forgotPasswordSchema,
-  googleAuthSchema,
   loginSchema,
   registerSchema,
   resendVerificationSchema,
@@ -117,12 +116,6 @@ export const openapiDocument = {
       },
       LoginRequest: toSchema(loginSchema),
       LoginResponse: {
-        type: "object",
-        properties: { user: ref("PublicUser"), token: { type: "string" } },
-        required: ["user", "token"],
-      },
-      GoogleAuthRequest: toSchema(googleAuthSchema),
-      GoogleAuthResponse: {
         type: "object",
         properties: { user: ref("PublicUser"), token: { type: "string" } },
         required: ["user", "token"],
@@ -467,19 +460,28 @@ export const openapiDocument = {
       },
     },
     "/auth/google": {
-      post: {
+      get: {
         tags: ["Auth"],
-        summary: "Sign up or log in with a Google ID token",
+        summary: "Start Google sign-in",
         description:
-          "Frontend obtains an ID token via Google Identity Services and posts it here. Verifies the token's signature and audience server-side, then finds an existing user by Google ID, links to an existing password account by matching email, or creates a new CLIENT account (email is auto-verified since Google already verified it; phone is left unset — the client should complete it later via PATCH /settings/profile). Always issues a JWT, no email verification step needed.",
-        requestBody: { required: true, ...jsonContent(ref("GoogleAuthRequest")) },
+          "Not meant to be called via fetch/AJAX — this is a plain browser navigation target (e.g. a link's href or window.location redirect). Redirects (302) to Google's OAuth consent screen. If Google sign-in isn't configured, redirects to the frontend's callback route with an `error` query param instead of returning JSON.",
         responses: {
-          "200": { description: "Signed in (account created if it didn't exist)", ...jsonContent(ref("GoogleAuthResponse")) },
-          "400": { description: "Validation failure, or the Google account's email is unverified", ...jsonContent(ref("ErrorResponse")) },
-          "401": { description: "Invalid or expired Google ID token", ...jsonContent(ref("ErrorResponse")) },
-          "403": { description: "This account has been suspended", ...jsonContent(ref("ErrorResponse")) },
-          "503": { description: "Google sign-in is not configured", ...jsonContent(ref("ErrorResponse")) },
-          "500": responses.serverError,
+          "302": { description: "Redirect to Google's consent screen, or to the frontend error callback if unconfigured" },
+        },
+      },
+    },
+    "/auth/google/callback": {
+      get: {
+        tags: ["Auth"],
+        summary: "Google OAuth callback",
+        description:
+          "Never called directly by the frontend — Google redirects the browser here after the user consents. Exchanges the authorization code for the user's Google identity, then finds an existing user by Google ID, links to an existing password account by matching email, or creates a new CLIENT account (email is auto-verified since Google already verified it; phone is left unset — the client should complete it later via PATCH /settings/profile). Always redirects (302) to `${FRONTEND_URL}/auth/google/callback` with either `?token=<jwt>` on success or `?error=<reason>` on failure — never returns a JSON body, since the browser is mid-navigation.",
+        parameters: [
+          { name: "code", in: "query", schema: { type: "string" }, description: "Authorization code from Google" },
+          { name: "error", in: "query", schema: { type: "string" }, description: "Present if the user denied consent at Google" },
+        ],
+        responses: {
+          "302": { description: "Redirect to the frontend's callback route with ?token=... on success or ?error=... on failure" },
         },
       },
     },
