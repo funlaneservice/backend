@@ -7,7 +7,7 @@ function toProfileView(user: {
   id: string;
   email: string;
   name: string;
-  phone: string;
+  phone: string | null;
   role: string;
   status: string;
 }) {

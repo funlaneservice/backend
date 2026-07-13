@@ -5,6 +5,7 @@ import { sendResponse } from "../../utils/apiResponse";
 import * as authService from "./auth.service";
 import {
   forgotPasswordSchema,
+  googleAuthSchema,
   loginSchema,
   registerSchema,
   resendVerificationSchema,
@@ -21,6 +22,12 @@ export const registerHandler = asyncHandler(async (req: Request, res: Response) 
 export const loginHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = loginSchema.parse(req.body);
   const result = await authService.login(input);
+  sendResponse(res, 200, result);
+});
+
+export const googleAuthHandler = asyncHandler(async (req: Request, res: Response) => {
+  const input = googleAuthSchema.parse(req.body);
+  const result = await authService.googleAuth(input);
   sendResponse(res, 200, result);
 });
 

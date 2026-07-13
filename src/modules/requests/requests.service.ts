@@ -19,15 +19,18 @@ import {
 
 const OPTIONS_EDITABLE_STATUSES: RequestStatus[] = ["PENDING", "OPTIONS_SENT"];
 
-function toQuoteOptionView(option: {
-  id: string;
-  label: string;
-  airline: string;
-  price: number;
-  departureTime: Date;
-  details: string | null;
-  createdAt: Date;
-}) {
+function toQuoteOptionView(
+  option: {
+    id: string;
+    label: string;
+    airline: string;
+    price: number;
+    departureTime: Date;
+    details: string | null;
+    createdAt: Date;
+  },
+  approvedOptionId: string | null
+) {
   return {
     id: option.id,
     label: option.label,
@@ -36,6 +39,7 @@ function toQuoteOptionView(option: {
     departureTime: option.departureTime,
     details: option.details,
     createdAt: option.createdAt,
+    isSelected: option.id === approvedOptionId,
   };
 }
 
@@ -58,6 +62,7 @@ async function toRequestView(request: {
   cancelledAt: Date | null;
   cancellationReason: string | null;
   payoutStatus: string;
+  approvedOptionId: string | null;
   createdAt: Date;
   passengers: {
     id: string;
@@ -105,6 +110,7 @@ async function toRequestView(request: {
     cancellationReason: request.cancellationReason,
     payoutStatus: request.payoutStatus,
     ticketDownloadUrl,
+    approvedOptionId: request.approvedOptionId,
     createdAt: request.createdAt,
     passengers: request.passengers.map((p) => ({
       id: p.id,
@@ -114,7 +120,9 @@ async function toRequestView(request: {
       nationality: p.nationality,
       dateOfBirth: p.dateOfBirth,
     })),
-    quoteOptions: request.quoteOptions.map(toQuoteOptionView),
+    quoteOptions: request.quoteOptions.map((option) =>
+      toQuoteOptionView(option, request.approvedOptionId)
+    ),
   };
 }
 
@@ -351,7 +359,7 @@ export async function addQuoteOption(
     },
   });
 
-  return toQuoteOptionView(option);
+  return toQuoteOptionView(option, null);
 }
 
 export async function deleteQuoteOption(

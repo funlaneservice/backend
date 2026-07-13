@@ -32,6 +32,8 @@ export const env = {
 
   paystackSecretKey: process.env.PAYSTACK_SECRET_KEY,
   paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY,
+
+  googleClientId: process.env.GOOGLE_CLIENT_ID,
 };
 
 export const isProduction = env.nodeEnv === "production";

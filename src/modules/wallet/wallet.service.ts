@@ -8,11 +8,18 @@ import { ListTransactionsQuery } from "./wallet.schema";
 
 type Tx = Prisma.TransactionClient;
 
+// The wallet ledger stores kobo throughout (locked decision, matches QuoteOption.price),
+// but every wallet API response converts to Naira at this boundary so clients never have
+// to divide by 100 themselves — mirrors the Naira-in/kobo-out conversion on the topup side.
+function koboToNaira(amountKobo: number): number {
+  return amountKobo / 100;
+}
+
 function toWalletView(wallet: Wallet) {
   return {
-    balance: wallet.balance,
-    lockedBalance: wallet.lockedBalance,
-    availableBalance: wallet.balance - wallet.lockedBalance,
+    balance: koboToNaira(wallet.balance),
+    lockedBalance: koboToNaira(wallet.lockedBalance),
+    availableBalance: koboToNaira(wallet.balance - wallet.lockedBalance),
     updatedAt: wallet.updatedAt,
   };
 }
@@ -30,9 +37,9 @@ function toTransactionView(transaction: {
   return {
     id: transaction.id,
     type: transaction.type,
-    amount: transaction.amount,
-    balanceAfter: transaction.balanceAfter,
-    lockedAfter: transaction.lockedAfter,
+    amount: koboToNaira(transaction.amount),
+    balanceAfter: koboToNaira(transaction.balanceAfter),
+    lockedAfter: koboToNaira(transaction.lockedAfter),
     reference: transaction.reference,
     requestId: transaction.requestId,
     createdAt: transaction.createdAt,

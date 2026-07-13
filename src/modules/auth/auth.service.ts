@@ -1,6 +1,8 @@
+import crypto from "crypto";
 import { prisma } from "../../lib/prisma";
 import { sendMailSafely } from "../../lib/mailer";
 import { issuePasswordResetToken, issueVerificationToken } from "../../lib/verificationTokens";
+import { isGoogleAuthConfigured, verifyGoogleIdToken } from "../../lib/googleAuth";
 import { ApiError } from "../../utils/ApiError";
 import { signToken } from "../../utils/jwt";
 import { comparePassword, hashPassword } from "../../utils/password";
@@ -8,6 +10,7 @@ import { hashToken } from "../../utils/verificationToken";
 import { sendPasswordResetEmail, sendVerificationEmail } from "./auth.mailer";
 import {
   ForgotPasswordInput,
+  GoogleAuthInput,
   LoginInput,
   RegisterInput,
   ResendVerificationInput,
@@ -51,6 +54,58 @@ export async function login(input: LoginInput) {
 
   if (!user.emailVerifiedAt) {
     throw new ApiError(403, "Please verify your email before logging in");
+  }
+
+  const token = signToken({ userId: user.id, role: user.role });
+  return { user: toPublicUser(user), token };
+}
+
+export async function googleAuth(input: GoogleAuthInput) {
+  if (!isGoogleAuthConfigured()) {
+    throw new ApiError(503, "Google sign-in is not configured");
+  }
+
+  let identity;
+  try {
+    identity = await verifyGoogleIdToken(input.idToken);
+  } catch {
+    throw new ApiError(401, "Invalid Google ID token");
+  }
+
+  if (!identity.emailVerified) {
+    throw new ApiError(400, "Google account email is not verified");
+  }
+
+  let user = await prisma.user.findUnique({ where: { googleId: identity.googleId } });
+
+  if (!user) {
+    const existingByEmail = await prisma.user.findUnique({ where: { email: identity.email } });
+
+    if (existingByEmail) {
+      user = await prisma.user.update({
+        where: { id: existingByEmail.id },
+        data: {
+          googleId: identity.googleId,
+          emailVerifiedAt: existingByEmail.emailVerifiedAt ?? new Date(),
+        },
+      });
+    } else {
+      const unusablePassword = await hashPassword(crypto.randomBytes(32).toString("hex"));
+      user = await prisma.user.create({
+        data: {
+          name: identity.name,
+          email: identity.email,
+          googleId: identity.googleId,
+          password: unusablePassword,
+          role: "CLIENT",
+          emailVerifiedAt: new Date(),
+        },
+      });
+    }
+  }
+
+  if (user.status === "SUSPENDED") {
+    throw new ApiError(403, "This account has been suspended");
   }
 
   const token = signToken({ userId: user.id, role: user.role });
