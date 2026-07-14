@@ -360,7 +360,7 @@ export async function addQuoteOption(
       requestId,
       label: input.label,
       airline: input.airline,
-      price: input.price,
+      price: Math.round(input.price * 100),
       departureTime: input.departureTime,
       details: input.details,
     },

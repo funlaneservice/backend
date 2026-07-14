@@ -908,7 +908,7 @@ export const openapiDocument = {
         tags: ["Requests"],
         summary: "Add a quote option to a request",
         description:
-          "Requires the AGENT currently assigned to this request, or an ADMIN acting on any request. Only allowed while the request is PENDING or OPTIONS_SENT.",
+          "Requires the AGENT currently assigned to this request, or an ADMIN acting on any request. Only allowed while the request is PENDING or OPTIONS_SENT. `price` is in Naira (converted to kobo internally before it's stored, and before it's later locked against the client's wallet on approval).",
         security: [{ bearerAuth: [] }],
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
         requestBody: { required: true, ...jsonContent(ref("AddQuoteOptionRequest")) },

@@ -46,9 +46,10 @@ export const adminListRequestsQuerySchema = z.object({
 export const quoteOptionInputSchema = z.object({
   label: z.string().min(1).max(100),
   airline: z.string().min(1).max(100),
-  // Kobo, not Naira — matches Wallet.balance/lockedBalance, since this value is locked
-  // against the wallet as-is on approval (see wallet.service.ts's koboToNaira comment).
-  price: z.number().int().positive().describe("Price in kobo (e.g. 15000000 for ₦150,000)"),
+  // Naira (major unit), matching every other client-facing money field — converted to
+  // kobo in requests.service.ts's addQuoteOption before it touches QuoteOption.price,
+  // which (like Wallet.balance/lockedBalance) stays kobo-denominated internally.
+  price: z.number().positive("price must be a positive number, in Naira").describe("Price in Naira"),
   departureTime: z.coerce.date(),
   details: z.string().max(1000).optional(),
 });
