@@ -19,6 +19,13 @@ import {
 
 const OPTIONS_EDITABLE_STATUSES: RequestStatus[] = ["PENDING", "OPTIONS_SENT"];
 
+// QuoteOption.price is stored in kobo (matches the wallet ledger it gets locked against —
+// see wallet.service.ts's koboToNaira comment); convert to Naira here so it displays
+// consistently with the wallet balance/lockedBalance fields the client compares it against.
+function koboToNaira(amountKobo: number): number {
+  return amountKobo / 100;
+}
+
 function toQuoteOptionView(
   option: {
     id: string;
@@ -35,7 +42,7 @@ function toQuoteOptionView(
     id: option.id,
     label: option.label,
     airline: option.airline,
-    price: option.price,
+    price: koboToNaira(option.price),
     departureTime: option.departureTime,
     details: option.details,
     createdAt: option.createdAt,

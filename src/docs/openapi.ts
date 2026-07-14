@@ -210,7 +210,7 @@ export const openapiDocument = {
           id: { type: "string", format: "uuid" },
           label: { type: "string" },
           airline: { type: "string" },
-          price: { type: "integer", description: "Price in kobo" },
+          price: { type: "number", description: "Price in Naira" },
           departureTime: { type: "string", format: "date-time" },
           details: { type: "string", nullable: true },
           createdAt: { type: "string", format: "date-time" },
