@@ -4,6 +4,7 @@ import { ApiError } from "../../utils/ApiError";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { sendResponse } from "../../utils/apiResponse";
 import * as authService from "./auth.service";
+import { getRequestContext } from "../audit/audit.service";
 import {
   forgotPasswordSchema,
   loginSchema,
@@ -23,13 +24,13 @@ function redirectToFrontendCallback(res: Response, params: Record<string, string
 
 export const registerHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = registerSchema.parse(req.body);
-  const result = await authService.register(input);
+  const result = await authService.register(input, getRequestContext(req));
   sendResponse(res, 201, result);
 });
 
 export const loginHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = loginSchema.parse(req.body);
-  const result = await authService.login(input);
+  const result = await authService.login(input, getRequestContext(req));
   sendResponse(res, 200, result);
 });
 
@@ -54,7 +55,7 @@ export const googleCallbackHandler = asyncHandler(async (req: Request, res: Resp
   }
 
   try {
-    const result = await authService.googleAuthCallback(code);
+    const result = await authService.googleAuthCallback(code, getRequestContext(req));
     redirectToFrontendCallback(res, { token: result.token });
   } catch (err) {
     const message = err instanceof ApiError ? err.message : "google_auth_failed";
@@ -64,7 +65,7 @@ export const googleCallbackHandler = asyncHandler(async (req: Request, res: Resp
 
 export const verifyEmailHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = verifyEmailSchema.parse(req.body);
-  const result = await authService.verifyEmail(input);
+  const result = await authService.verifyEmail(input, getRequestContext(req));
   sendResponse(res, 200, result);
 });
 
@@ -76,13 +77,13 @@ export const resendVerificationHandler = asyncHandler(async (req: Request, res: 
 
 export const forgotPasswordHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = forgotPasswordSchema.parse(req.body);
-  const result = await authService.forgotPassword(input);
+  const result = await authService.forgotPassword(input, getRequestContext(req));
   sendResponse(res, 200, result);
 });
 
 export const resetPasswordHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = resetPasswordSchema.parse(req.body);
-  const result = await authService.resetPassword(input);
+  const result = await authService.resetPassword(input, getRequestContext(req));
   sendResponse(res, 200, result);
 });
 

@@ -11,6 +11,9 @@ import { isProduction } from "./config/env";
 export function createApp(): Express {
   const app = express();
 
+  // Trust the first hop (reverse proxy/load balancer) so req.ip reflects the real client address.
+  app.set("trust proxy", 1);
+
   app.use(helmet());
   app.use(cors());
   app.use(

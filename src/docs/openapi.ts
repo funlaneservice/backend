@@ -24,6 +24,7 @@ import {
 } from "../modules/requests/requests.schema";
 import { initializeTopupBodySchema } from "../modules/wallet/wallet.schema";
 import { changePasswordSchema, updateProfileSchema } from "../modules/settings/settings.schema";
+import { AUDIT_ACTIONS, AUDIT_STATUSES } from "../modules/audit/audit.schema";
 
 // `any` param sidesteps a TS instantiation blowup (multi-minute OOM) inferring zodToJsonSchema's generic return type against these chained schemas.
 function toSchema(zodSchema: any): Record<string, unknown> {
@@ -95,6 +96,7 @@ export const openapiDocument = {
     { name: "Admin", description: "Admin login and admin account creation" },
     { name: "Agent", description: "Agent login and admin-driven agent onboarding" },
     { name: "Users", description: "Admin management of all user accounts (CLIENT/AGENT/ADMIN)" },
+    { name: "Audit", description: "Security audit log of authentication and admin/user-management actions" },
     { name: "Requests", description: "Client-submitted travel requests" },
     { name: "Wallet", description: "Client wallet balance and transaction ledger" },
     { name: "Settings", description: "Self-service profile and password management for CLIENT/AGENT accounts" },
@@ -192,6 +194,54 @@ export const openapiDocument = {
       },
       UpdateUserRequest: toSchema(updateUserSchema),
       ChangeUserRoleRequest: toSchema(changeUserRoleSchema),
+      AuditLogView: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          action: { type: "string", enum: AUDIT_ACTIONS },
+          status: { type: "string", enum: AUDIT_STATUSES },
+          actorId: { type: "string", format: "uuid", nullable: true, description: "Null for unauthenticated attempts, e.g. a failed login" },
+          actorEmail: { type: "string", nullable: true },
+          actorRole: { type: "string", nullable: true },
+          targetType: { type: "string", nullable: true },
+          targetId: { type: "string", nullable: true },
+          ipAddress: { type: "string", nullable: true },
+          userAgent: { type: "string", nullable: true },
+          metadata: { type: "object", nullable: true, additionalProperties: true },
+          createdAt: { type: "string", format: "date-time" },
+        },
+        required: [
+          "id",
+          "action",
+          "status",
+          "actorId",
+          "actorEmail",
+          "actorRole",
+          "targetType",
+          "targetId",
+          "ipAddress",
+          "userAgent",
+          "metadata",
+          "createdAt",
+        ],
+      },
+      AuditLogListResponse: {
+        type: "object",
+        properties: {
+          logs: { type: "array", items: ref("AuditLogView") },
+          pagination: {
+            type: "object",
+            properties: {
+              page: { type: "integer" },
+              limit: { type: "integer" },
+              total: { type: "integer" },
+              totalPages: { type: "integer" },
+            },
+            required: ["page", "limit", "total", "totalPages"],
+          },
+        },
+        required: ["logs", "pagination"],
+      },
       PassengerView: {
         type: "object",
         properties: {
@@ -745,6 +795,34 @@ export const openapiDocument = {
           "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
           "404": { description: "User not found", ...jsonContent(ref("ErrorResponse")) },
           "409": { description: "User is already active", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/admin/audit-logs": {
+      get: {
+        tags: ["Audit"],
+        summary: "List/search the security audit log",
+        description:
+          "Requires an authenticated ADMIN. Covers auth (login/register/password reset/email verification) and admin/user-management actions (role changes, suspensions, admin/agent creation, etc.), each with actor, status, and source IP/user-agent.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+          { name: "action", in: "query", schema: { type: "string", enum: AUDIT_ACTIONS } },
+          { name: "status", in: "query", schema: { type: "string", enum: AUDIT_STATUSES } },
+          { name: "actorId", in: "query", schema: { type: "string", format: "uuid" } },
+          { name: "targetType", in: "query", schema: { type: "string" } },
+          { name: "targetId", in: "query", schema: { type: "string" } },
+          { name: "search", in: "query", schema: { type: "string" }, description: "Matches actorEmail (contains, case-insensitive)" },
+          { name: "from", in: "query", schema: { type: "string", format: "date-time" } },
+          { name: "to", in: "query", schema: { type: "string", format: "date-time" } },
+        ],
+        responses: {
+          "200": { description: "Paginated list of audit log entries", ...jsonContent(ref("AuditLogListResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
           "500": responses.serverError,
         },
       },

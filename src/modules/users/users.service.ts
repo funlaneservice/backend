@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { ApiError } from "../../utils/ApiError";
+import { recordAuditEvent, RequestContext } from "../audit/audit.service";
 import { ChangeUserRoleInput, ListUsersQuery, UpdateUserInput } from "./users.schema";
 
 function toAdminUserView(user: {
@@ -73,22 +74,49 @@ export async function getUser(id: string) {
   return toAdminUserView(user);
 }
 
-export async function updateUser(id: string, input: UpdateUserInput) {
+export async function updateUser(actingAdminId: string, id: string, input: UpdateUserInput, ctx: RequestContext) {
   await findUserOrThrow(id);
   const user = await prisma.user.update({ where: { id }, data: input });
+
+  await recordAuditEvent({
+    action: "USER_UPDATED",
+    status: "SUCCESS",
+    actorId: actingAdminId,
+    targetType: "User",
+    targetId: id,
+    metadata: { updatedFields: Object.keys(input) },
+    ...ctx,
+  });
+
   return toAdminUserView(user);
 }
 
-export async function changeUserRole(actingAdminId: string, id: string, input: ChangeUserRoleInput) {
+export async function changeUserRole(
+  actingAdminId: string,
+  id: string,
+  input: ChangeUserRoleInput,
+  ctx: RequestContext
+) {
   if (id === actingAdminId) {
     throw new ApiError(400, "You cannot change your own role");
   }
-  await findUserOrThrow(id);
+  const existing = await findUserOrThrow(id);
   const user = await prisma.user.update({ where: { id }, data: { role: input.role } });
+
+  await recordAuditEvent({
+    action: "USER_ROLE_CHANGED",
+    status: "SUCCESS",
+    actorId: actingAdminId,
+    targetType: "User",
+    targetId: id,
+    metadata: { fromRole: existing.role, toRole: input.role },
+    ...ctx,
+  });
+
   return toAdminUserView(user);
 }
 
-export async function suspendUser(actingAdminId: string, id: string) {
+export async function suspendUser(actingAdminId: string, id: string, ctx: RequestContext) {
   if (id === actingAdminId) {
     throw new ApiError(400, "You cannot suspend your own account");
   }
@@ -97,22 +125,51 @@ export async function suspendUser(actingAdminId: string, id: string) {
     throw new ApiError(409, "User is already suspended");
   }
   const user = await prisma.user.update({ where: { id }, data: { status: "SUSPENDED" } });
+
+  await recordAuditEvent({
+    action: "USER_SUSPENDED",
+    status: "SUCCESS",
+    actorId: actingAdminId,
+    targetType: "User",
+    targetId: id,
+    ...ctx,
+  });
+
   return toAdminUserView(user);
 }
 
-export async function reactivateUser(id: string) {
+export async function reactivateUser(actingAdminId: string, id: string, ctx: RequestContext) {
   const existing = await findUserOrThrow(id);
   if (existing.status === "ACTIVE") {
     throw new ApiError(409, "User is already active");
   }
   const user = await prisma.user.update({ where: { id }, data: { status: "ACTIVE" } });
+
+  await recordAuditEvent({
+    action: "USER_REACTIVATED",
+    status: "SUCCESS",
+    actorId: actingAdminId,
+    targetType: "User",
+    targetId: id,
+    ...ctx,
+  });
+
   return toAdminUserView(user);
 }
 
-export async function deleteUser(actingAdminId: string, id: string) {
+export async function deleteUser(actingAdminId: string, id: string, ctx: RequestContext) {
   if (id === actingAdminId) {
     throw new ApiError(400, "You cannot delete your own account");
   }
   await findUserOrThrow(id);
   await prisma.user.delete({ where: { id } });
+
+  await recordAuditEvent({
+    action: "USER_DELETED",
+    status: "SUCCESS",
+    actorId: actingAdminId,
+    targetType: "User",
+    targetId: id,
+    ...ctx,
+  });
 }
