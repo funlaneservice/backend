@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { ApiError } from "../../utils/ApiError";
 import { asyncHandler } from "../../utils/asyncHandler";
 import { sendResponse } from "../../utils/apiResponse";
+import { getRequestContext } from "../audit/audit.service";
 import * as requestsService from "./requests.service";
 import {
   adminForceStatusSchema,
@@ -33,7 +34,13 @@ export const createRequestHandler = asyncHandler(async (req: Request, res: Respo
   const input = createRequestSchema.parse({ ...req.body, passengers });
   const files = (req.files as Express.Multer.File[]) ?? [];
 
-  const request = await requestsService.createRequest(req.user.userId, req.user.role, input, files);
+  const request = await requestsService.createRequest(
+    req.user.userId,
+    req.user.role,
+    input,
+    files,
+    getRequestContext(req)
+  );
   sendResponse(res, 201, { request });
 });
 
@@ -79,7 +86,7 @@ export const claimRequestHandler = asyncHandler(async (req: Request, res: Respon
   }
 
   const { id } = requestIdParamSchema.parse(req.params);
-  const request = await requestsService.claimRequest(req.user.userId, id);
+  const request = await requestsService.claimRequest(req.user.userId, id, getRequestContext(req));
   sendResponse(res, 200, { request });
 });
 
@@ -110,7 +117,12 @@ export const sendOptionsHandler = asyncHandler(async (req: Request, res: Respons
   }
 
   const { id } = requestIdParamSchema.parse(req.params);
-  const request = await requestsService.sendOptions(req.user.userId, req.user.role, id);
+  const request = await requestsService.sendOptions(
+    req.user.userId,
+    req.user.role,
+    id,
+    getRequestContext(req)
+  );
   sendResponse(res, 200, { request });
 });
 
@@ -121,7 +133,13 @@ export const rejectRequestHandler = asyncHandler(async (req: Request, res: Respo
 
   const { id } = requestIdParamSchema.parse(req.params);
   const input = rejectRequestSchema.parse(req.body);
-  const request = await requestsService.rejectOptions(req.user.userId, req.user.role, id, input);
+  const request = await requestsService.rejectOptions(
+    req.user.userId,
+    req.user.role,
+    id,
+    input,
+    getRequestContext(req)
+  );
   sendResponse(res, 200, { request });
 });
 
@@ -132,7 +150,13 @@ export const approveRequestHandler = asyncHandler(async (req: Request, res: Resp
 
   const { id } = requestIdParamSchema.parse(req.params);
   const input = approveRequestSchema.parse(req.body);
-  const request = await requestsService.approveOption(req.user.userId, req.user.role, id, input);
+  const request = await requestsService.approveOption(
+    req.user.userId,
+    req.user.role,
+    id,
+    input,
+    getRequestContext(req)
+  );
   sendResponse(res, 200, { request });
 });
 
@@ -143,7 +167,13 @@ export const cancelRequestHandler = asyncHandler(async (req: Request, res: Respo
 
   const { id } = requestIdParamSchema.parse(req.params);
   const input = cancelRequestSchema.parse(req.body);
-  const request = await requestsService.cancelRequest(req.user.userId, req.user.role, id, input);
+  const request = await requestsService.cancelRequest(
+    req.user.userId,
+    req.user.role,
+    id,
+    input,
+    getRequestContext(req)
+  );
   sendResponse(res, 200, { request });
 });
 
@@ -154,7 +184,12 @@ export const adminCancelRequestHandler = asyncHandler(async (req: Request, res: 
 
   const { id } = requestIdParamSchema.parse(req.params);
   const input = cancelRequestSchema.parse(req.body);
-  const request = await requestsService.adminCancelRequest(req.user.userId, id, input);
+  const request = await requestsService.adminCancelRequest(
+    req.user.userId,
+    id,
+    input,
+    getRequestContext(req)
+  );
   sendResponse(res, 200, { request });
 });
 
@@ -165,7 +200,12 @@ export const adminReassignAgentHandler = asyncHandler(async (req: Request, res: 
 
   const { id } = requestIdParamSchema.parse(req.params);
   const input = adminReassignRequestSchema.parse(req.body);
-  const request = await requestsService.adminReassignAgent(req.user.userId, id, input.agentId);
+  const request = await requestsService.adminReassignAgent(
+    req.user.userId,
+    id,
+    input.agentId,
+    getRequestContext(req)
+  );
   sendResponse(res, 200, { request });
 });
 
@@ -176,7 +216,12 @@ export const adminForceStatusHandler = asyncHandler(async (req: Request, res: Re
 
   const { id } = requestIdParamSchema.parse(req.params);
   const input = adminForceStatusSchema.parse(req.body);
-  const request = await requestsService.adminForceStatus(req.user.userId, id, input);
+  const request = await requestsService.adminForceStatus(
+    req.user.userId,
+    id,
+    input,
+    getRequestContext(req)
+  );
   sendResponse(res, 200, { request });
 });
 
@@ -191,7 +236,13 @@ export const issueTicketHandler = asyncHandler(async (req: Request, res: Respons
   }
 
   const { id } = requestIdParamSchema.parse(req.params);
-  const request = await requestsService.issueTicket(req.user.userId, req.user.role, id, file);
+  const request = await requestsService.issueTicket(
+    req.user.userId,
+    req.user.role,
+    id,
+    file,
+    getRequestContext(req)
+  );
   sendResponse(res, 200, { request });
 });
 
@@ -201,6 +252,11 @@ export const completeRequestHandler = asyncHandler(async (req: Request, res: Res
   }
 
   const { id } = requestIdParamSchema.parse(req.params);
-  const request = await requestsService.completeRequest(req.user.userId, req.user.role, id);
+  const request = await requestsService.completeRequest(
+    req.user.userId,
+    req.user.role,
+    id,
+    getRequestContext(req)
+  );
   sendResponse(res, 200, { request });
 });

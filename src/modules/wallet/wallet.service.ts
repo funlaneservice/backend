@@ -5,6 +5,7 @@ import * as paystack from "../../lib/paystack";
 import { env } from "../../config/env";
 import { ApiError } from "../../utils/ApiError";
 import * as notificationsService from "../notifications/notifications.service";
+import { recordAuditEvent } from "../audit/audit.service";
 import { ListTransactionsQuery } from "./wallet.schema";
 
 type Tx = Prisma.TransactionClient;
@@ -255,6 +256,18 @@ async function processChargeSuccess(reference: string) {
     }
     throw err;
   }
+
+  await recordAuditEvent({
+    action: "WALLET_TOPUP_COMPLETED",
+    status: "SUCCESS",
+    actorId: userId,
+    actorRole: "CLIENT",
+    targetType: "Wallet",
+    targetId: userId,
+    metadata: { amount: verified.amount, reference: verified.reference },
+    ip: null,
+    userAgent: null,
+  });
 
   void notificationsService.notifyWalletTopup(userId, verified.amount);
 }

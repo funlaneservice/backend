@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma";
 import * as notificationsService from "../notifications/notifications.service";
 import { getSignedDownloadUrl, uploadBuffer } from "../uploads/uploads.service";
 import * as walletService from "../wallet/wallet.service";
+import { recordAuditEvent, RequestContext } from "../audit/audit.service";
 import { ApiError } from "../../utils/ApiError";
 import {
   AdminForceStatusInput,
@@ -194,7 +195,8 @@ export async function createRequest(
   callerId: string,
   callerRole: string,
   input: CreateRequestInput,
-  files: Express.Multer.File[]
+  files: Express.Multer.File[],
+  ctx: RequestContext
 ) {
   let clientId = callerId;
   if (callerRole === "ADMIN") {
@@ -243,6 +245,17 @@ export async function createRequest(
       passengers: { create: passengersData },
     },
     include: { passengers: true, quoteOptions: true },
+  });
+
+  await recordAuditEvent({
+    action: "REQUEST_CREATED",
+    status: "SUCCESS",
+    actorId: callerId,
+    actorRole: callerRole,
+    targetType: "TravelRequest",
+    targetId: request.id,
+    metadata: { clientId, origin: input.origin, destination: input.destination },
+    ...ctx,
   });
 
   return toRequestView(request);
@@ -330,7 +343,7 @@ export async function getRequestById(viewer: { userId: string; role: string }, i
   return toRequestView(request);
 }
 
-export async function claimRequest(agentId: string, id: string) {
+export async function claimRequest(agentId: string, id: string, ctx: RequestContext) {
   const claimed = await prisma.travelRequest.updateMany({
     where: { id, assignedAgentId: null, status: "PENDING" },
     data: { assignedAgentId: agentId },
@@ -343,6 +356,16 @@ export async function claimRequest(agentId: string, id: string) {
     }
     throw new ApiError(409, "This request has already been claimed");
   }
+
+  await recordAuditEvent({
+    action: "REQUEST_CLAIMED",
+    status: "SUCCESS",
+    actorId: agentId,
+    actorRole: "AGENT",
+    targetType: "TravelRequest",
+    targetId: id,
+    ...ctx,
+  });
 
   return getRequestById({ userId: agentId, role: "AGENT" }, id);
 }
@@ -408,7 +431,12 @@ export async function deleteQuoteOption(
   });
 }
 
-export async function sendOptions(callerId: string, callerRole: string, requestId: string) {
+export async function sendOptions(
+  callerId: string,
+  callerRole: string,
+  requestId: string,
+  ctx: RequestContext
+) {
   await getAssignedRequestOrThrow(callerId, callerRole, requestId, ["PENDING"]);
 
   const optionCount = await prisma.quoteOption.count({ where: { requestId } });
@@ -422,6 +450,17 @@ export async function sendOptions(callerId: string, callerRole: string, requestI
     include: { passengers: true, quoteOptions: true },
   });
 
+  await recordAuditEvent({
+    action: "REQUEST_OPTIONS_SENT",
+    status: "SUCCESS",
+    actorId: callerId,
+    actorRole: callerRole,
+    targetType: "TravelRequest",
+    targetId: requestId,
+    metadata: { optionCount },
+    ...ctx,
+  });
+
   void notificationsService.notifyOptionsSent(requestId, updated.clientId);
 
   return toRequestView(updated);
@@ -431,7 +470,8 @@ export async function approveOption(
   callerId: string,
   callerRole: string,
   requestId: string,
-  input: ApproveRequestInput
+  input: ApproveRequestInput,
+  ctx: RequestContext
 ) {
   const updated = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT 1 FROM travel_requests WHERE id = ${requestId} FOR UPDATE`;
@@ -458,6 +498,17 @@ export async function approveOption(
     });
   });
 
+  await recordAuditEvent({
+    action: "REQUEST_APPROVED",
+    status: "SUCCESS",
+    actorId: callerId,
+    actorRole: callerRole,
+    targetType: "TravelRequest",
+    targetId: requestId,
+    metadata: { optionId: input.optionId },
+    ...ctx,
+  });
+
   if (updated.assignedAgentId) {
     void notificationsService.notifyRequestApproved(requestId, updated.assignedAgentId);
   }
@@ -469,7 +520,8 @@ export async function cancelRequest(
   callerId: string,
   callerRole: string,
   requestId: string,
-  input: CancelRequestInput
+  input: CancelRequestInput,
+  ctx: RequestContext
 ) {
   const updated = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT 1 FROM travel_requests WHERE id = ${requestId} FOR UPDATE`;
@@ -496,10 +548,26 @@ export async function cancelRequest(
     });
   });
 
+  await recordAuditEvent({
+    action: "REQUEST_CANCELLED",
+    status: "SUCCESS",
+    actorId: callerId,
+    actorRole: callerRole,
+    targetType: "TravelRequest",
+    targetId: requestId,
+    metadata: { reason: input.reason },
+    ...ctx,
+  });
+
   return toRequestView(updated);
 }
 
-export async function adminCancelRequest(adminId: string, requestId: string, input: CancelRequestInput) {
+export async function adminCancelRequest(
+  adminId: string,
+  requestId: string,
+  input: CancelRequestInput,
+  ctx: RequestContext
+) {
   const updated = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT 1 FROM travel_requests WHERE id = ${requestId} FOR UPDATE`;
 
@@ -529,12 +597,26 @@ export async function adminCancelRequest(adminId: string, requestId: string, inp
     });
   });
 
-  console.warn(`[requests] admin ${adminId} force-cancelled request ${requestId}: ${input.reason}`);
+  await recordAuditEvent({
+    action: "REQUEST_ADMIN_CANCELLED",
+    status: "SUCCESS",
+    actorId: adminId,
+    actorRole: "ADMIN",
+    targetType: "TravelRequest",
+    targetId: requestId,
+    metadata: { reason: input.reason },
+    ...ctx,
+  });
 
   return toRequestView(updated);
 }
 
-export async function adminReassignAgent(adminId: string, requestId: string, agentId: string | null) {
+export async function adminReassignAgent(
+  adminId: string,
+  requestId: string,
+  agentId: string | null,
+  ctx: RequestContext
+) {
   const request = await prisma.travelRequest.findUnique({ where: { id: requestId } });
   if (!request) {
     throw new ApiError(404, "Request not found");
@@ -559,7 +641,16 @@ export async function adminReassignAgent(adminId: string, requestId: string, age
     include: { passengers: true, quoteOptions: true },
   });
 
-  console.warn(`[requests] admin ${adminId} reassigned request ${requestId} to agent ${agentId ?? "(unassigned)"}`);
+  await recordAuditEvent({
+    action: "REQUEST_ADMIN_REASSIGNED",
+    status: "SUCCESS",
+    actorId: adminId,
+    actorRole: "ADMIN",
+    targetType: "TravelRequest",
+    targetId: requestId,
+    metadata: { fromAgentId: request.assignedAgentId, toAgentId: agentId },
+    ...ctx,
+  });
 
   return toRequestView(updated);
 }
@@ -568,7 +659,12 @@ export async function adminReassignAgent(adminId: string, requestId: string, age
 // wallet funds, since a forced jump can cross those transitions in either direction.
 // The admin is responsible for reconciling wallet state via the wallet admin views if
 // the forced status crosses an APPROVED_LOCKED/COMPLETED boundary.
-export async function adminForceStatus(adminId: string, requestId: string, input: AdminForceStatusInput) {
+export async function adminForceStatus(
+  adminId: string,
+  requestId: string,
+  input: AdminForceStatusInput,
+  ctx: RequestContext
+) {
   const request = await prisma.travelRequest.findUnique({ where: { id: requestId } });
   if (!request) {
     throw new ApiError(404, "Request not found");
@@ -583,11 +679,16 @@ export async function adminForceStatus(adminId: string, requestId: string, input
     include: { passengers: true, quoteOptions: true },
   });
 
-  console.warn(
-    `[requests] admin ${adminId} force-set request ${requestId} status ${request.status} -> ${input.status}${
-      input.reason ? `: ${input.reason}` : ""
-    }`
-  );
+  await recordAuditEvent({
+    action: "REQUEST_ADMIN_FORCE_STATUS",
+    status: "SUCCESS",
+    actorId: adminId,
+    actorRole: "ADMIN",
+    targetType: "TravelRequest",
+    targetId: requestId,
+    metadata: { fromStatus: request.status, toStatus: input.status, reason: input.reason ?? null },
+    ...ctx,
+  });
 
   return toRequestView(updated);
 }
@@ -596,7 +697,8 @@ export async function issueTicket(
   callerId: string,
   callerRole: string,
   requestId: string,
-  file: Express.Multer.File
+  file: Express.Multer.File,
+  ctx: RequestContext
 ) {
   await getAssignedRequestOrThrow(callerId, callerRole, requestId, ["APPROVED_LOCKED"]);
 
@@ -608,12 +710,27 @@ export async function issueTicket(
     include: { passengers: true, quoteOptions: true },
   });
 
+  await recordAuditEvent({
+    action: "REQUEST_TICKET_ISSUED",
+    status: "SUCCESS",
+    actorId: callerId,
+    actorRole: callerRole,
+    targetType: "TravelRequest",
+    targetId: requestId,
+    ...ctx,
+  });
+
   void notificationsService.notifyTicketCompleted(requestId, updated.clientId);
 
   return toRequestView(updated);
 }
 
-export async function completeRequest(callerId: string, callerRole: string, requestId: string) {
+export async function completeRequest(
+  callerId: string,
+  callerRole: string,
+  requestId: string,
+  ctx: RequestContext
+) {
   const updated = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT 1 FROM travel_requests WHERE id = ${requestId} FOR UPDATE`;
 
@@ -642,6 +759,16 @@ export async function completeRequest(callerId: string, callerRole: string, requ
     });
   });
 
+  await recordAuditEvent({
+    action: "REQUEST_COMPLETED",
+    status: "SUCCESS",
+    actorId: callerId,
+    actorRole: callerRole,
+    targetType: "TravelRequest",
+    targetId: requestId,
+    ...ctx,
+  });
+
   return toRequestView(updated);
 }
 
@@ -649,7 +776,8 @@ export async function rejectOptions(
   callerId: string,
   callerRole: string,
   requestId: string,
-  input: RejectRequestInput
+  input: RejectRequestInput,
+  ctx: RequestContext
 ) {
   const request = await prisma.travelRequest.findUnique({ where: { id: requestId } });
 
@@ -664,6 +792,17 @@ export async function rejectOptions(
     where: { id: requestId },
     data: { status: "PENDING", rejectionReason: input.reason, rejectedAt: new Date() },
     include: { passengers: true, quoteOptions: true },
+  });
+
+  await recordAuditEvent({
+    action: "REQUEST_REJECTED",
+    status: "SUCCESS",
+    actorId: callerId,
+    actorRole: callerRole,
+    targetType: "TravelRequest",
+    targetId: requestId,
+    metadata: { reason: input.reason },
+    ...ctx,
   });
 
   if (updated.assignedAgentId) {
