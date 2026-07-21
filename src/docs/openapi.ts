@@ -100,6 +100,7 @@ export const openapiDocument = {
     { name: "Requests", description: "Client-submitted travel requests" },
     { name: "Wallet", description: "Client wallet balance and transaction ledger" },
     { name: "Settings", description: "Self-service profile and password management for CLIENT/AGENT accounts" },
+    { name: "Notifications", description: "In-app notifications for the authenticated user" },
   ],
   components: {
     securitySchemes: {
@@ -390,6 +391,54 @@ export const openapiDocument = {
           reference: { type: "string", description: "Wallet is credited once this reference's charge.success webhook is verified" },
         },
         required: ["authorizationUrl", "accessCode", "reference"],
+      },
+      NotificationView: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          type: {
+            type: "string",
+            enum: ["OPTIONS_SENT", "REQUEST_APPROVED", "REQUEST_REJECTED", "TICKET_COMPLETED", "WALLET_TOPUP"],
+          },
+          title: { type: "string" },
+          message: { type: "string" },
+          requestId: { type: "string", format: "uuid", nullable: true },
+          readAt: { type: "string", format: "date-time", nullable: true },
+          createdAt: { type: "string", format: "date-time" },
+        },
+        required: ["id", "type", "title", "message", "requestId", "readAt", "createdAt"],
+      },
+      NotificationListResponse: {
+        type: "object",
+        properties: {
+          notifications: { type: "array", items: ref("NotificationView") },
+          pagination: {
+            type: "object",
+            properties: {
+              page: { type: "integer" },
+              limit: { type: "integer" },
+              total: { type: "integer" },
+              totalPages: { type: "integer" },
+            },
+            required: ["page", "limit", "total", "totalPages"],
+          },
+        },
+        required: ["notifications", "pagination"],
+      },
+      NotificationResponse: {
+        type: "object",
+        properties: { notification: ref("NotificationView") },
+        required: ["notification"],
+      },
+      UnreadCountResponse: {
+        type: "object",
+        properties: { count: { type: "integer" } },
+        required: ["count"],
+      },
+      MarkAllReadResponse: {
+        type: "object",
+        properties: { count: { type: "integer", description: "Number of notifications marked as read" } },
+        required: ["count"],
       },
       RequestSummaryView: {
         type: "object",
@@ -1317,6 +1366,63 @@ export const openapiDocument = {
           "400": responses.validation,
           "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
           "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/notifications": {
+      get: {
+        tags: ["Notifications"],
+        summary: "List the authenticated user's in-app notifications",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "page", in: "query", schema: { type: "integer", default: 1 } },
+          { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
+          { name: "unreadOnly", in: "query", schema: { type: "boolean", default: false } },
+        ],
+        responses: {
+          "200": { description: "Paginated notifications, newest first", ...jsonContent(ref("NotificationListResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/notifications/unread-count": {
+      get: {
+        tags: ["Notifications"],
+        summary: "Get the authenticated user's unread notification count",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Unread count", ...jsonContent(ref("UnreadCountResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/notifications/read-all": {
+      patch: {
+        tags: ["Notifications"],
+        summary: "Mark all of the authenticated user's notifications as read",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Number of notifications marked as read", ...jsonContent(ref("MarkAllReadResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/notifications/{id}/read": {
+      patch: {
+        tags: ["Notifications"],
+        summary: "Mark a single notification as read",
+        description: "The notification must belong to the authenticated user.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+        responses: {
+          "200": { description: "Notification marked as read", ...jsonContent(ref("NotificationResponse")) },
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "404": { description: "Notification not found", ...jsonContent(ref("ErrorResponse")) },
           "500": responses.serverError,
         },
       },

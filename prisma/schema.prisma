@@ -66,6 +66,14 @@ enum AuditStatus {
   FAILURE
 }
 
+enum NotificationType {
+  OPTIONS_SENT
+  REQUEST_APPROVED
+  REQUEST_REJECTED
+  TICKET_COMPLETED
+  WALLET_TOPUP
+}
+
 model User {
   id                String     @id @default(uuid())
   email             String     @unique
@@ -84,6 +92,7 @@ model User {
   wallet             Wallet?
   travelRequests     TravelRequest[]     @relation("ClientRequests")
   assignedRequests   TravelRequest[]     @relation("AgentRequests")
+  notifications      Notification[]
 
   @@map("users")
 }
@@ -222,6 +231,22 @@ model PaystackEvent {
   processedAt DateTime?
 
   @@map("paystack_events")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  requestId String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@map("notifications")
 }
 
 model AuditLog {

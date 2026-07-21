@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma";
 import * as paystack from "../../lib/paystack";
 import { env } from "../../config/env";
 import { ApiError } from "../../utils/ApiError";
+import * as notificationsService from "../notifications/notifications.service";
 import { ListTransactionsQuery } from "./wallet.schema";
 
 type Tx = Prisma.TransactionClient;
@@ -254,4 +255,6 @@ async function processChargeSuccess(reference: string) {
     }
     throw err;
   }
+
+  void notificationsService.notifyWalletTopup(userId, verified.amount);
 }
