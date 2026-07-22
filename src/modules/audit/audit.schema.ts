@@ -29,6 +29,7 @@ export const AUDIT_ACTIONS = [
   "REQUEST_TICKET_ISSUED",
   "REQUEST_COMPLETED",
   "WALLET_TOPUP_COMPLETED",
+  "LEGAL_DOCUMENT_UPDATED",
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

@@ -25,6 +25,7 @@ import {
 import { initializeTopupBodySchema } from "../modules/wallet/wallet.schema";
 import { changePasswordSchema, updateProfileSchema } from "../modules/settings/settings.schema";
 import { AUDIT_ACTIONS, AUDIT_STATUSES } from "../modules/audit/audit.schema";
+import { LEGAL_DOCUMENT_SLUGS, updateLegalDocumentSchema } from "../modules/legal/legal.schema";
 
 // `any` param sidesteps a TS instantiation blowup (multi-minute OOM) inferring zodToJsonSchema's generic return type against these chained schemas.
 function toSchema(zodSchema: any): Record<string, unknown> {
@@ -101,6 +102,7 @@ export const openapiDocument = {
     { name: "Wallet", description: "Client wallet balance and transaction ledger" },
     { name: "Settings", description: "Self-service profile and password management for CLIENT/AGENT accounts" },
     { name: "Notifications", description: "In-app notifications for the authenticated user" },
+    { name: "Legal", description: "Terms & Conditions and Privacy Policy content, admin-editable" },
   ],
   components: {
     securitySchemes: {
@@ -439,6 +441,16 @@ export const openapiDocument = {
         type: "object",
         properties: { count: { type: "integer", description: "Number of notifications marked as read" } },
         required: ["count"],
+      },
+      UpdateLegalDocumentRequest: toSchema(updateLegalDocumentSchema),
+      LegalDocumentResponse: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: LEGAL_DOCUMENT_SLUGS as unknown as string[] },
+          content: { type: "string", description: "Empty string if no admin has set this document yet" },
+          updatedAt: { type: "string", format: "date-time", nullable: true },
+        },
+        required: ["type", "content", "updatedAt"],
       },
       RequestSummaryView: {
         type: "object",
@@ -1470,6 +1482,40 @@ export const openapiDocument = {
           "400": responses.validation,
           "401": { description: "Missing/invalid/expired token, or current password is incorrect", ...jsonContent(ref("ErrorResponse")) },
           "403": { description: "Authenticated user is not a client or agent", ...jsonContent(ref("ErrorResponse")) },
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/legal/{type}": {
+      get: {
+        tags: ["Legal"],
+        summary: "Fetch the current Terms & Conditions or Privacy Policy content",
+        description: "Public endpoint. Returns empty content if no admin has set this document yet.",
+        parameters: [
+          { name: "type", in: "path", required: true, schema: { type: "string", enum: LEGAL_DOCUMENT_SLUGS as unknown as string[] } },
+        ],
+        responses: {
+          "200": { description: "Legal document content", ...jsonContent(ref("LegalDocumentResponse")) },
+          "400": responses.validation,
+          "500": responses.serverError,
+        },
+      },
+    },
+    "/admin/legal/{type}": {
+      put: {
+        tags: ["Legal"],
+        summary: "Set the Terms & Conditions or Privacy Policy content",
+        description: "Requires an authenticated ADMIN. Creates the document if it doesn't exist yet, otherwise overwrites its content.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "type", in: "path", required: true, schema: { type: "string", enum: LEGAL_DOCUMENT_SLUGS as unknown as string[] } },
+        ],
+        requestBody: { required: true, ...jsonContent(ref("UpdateLegalDocumentRequest")) },
+        responses: {
+          "200": { description: "Legal document updated", ...jsonContent(ref("LegalDocumentResponse")) },
+          "400": responses.validation,
+          "401": { description: "Missing, invalid, or expired token", ...jsonContent(ref("ErrorResponse")) },
+          "403": { description: "Authenticated user is not an admin", ...jsonContent(ref("ErrorResponse")) },
           "500": responses.serverError,
         },
       },

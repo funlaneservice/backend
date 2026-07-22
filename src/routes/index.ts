@@ -8,6 +8,7 @@ import { walletRouter } from "../modules/wallet/wallet.routes";
 import { settingsRouter } from "../modules/settings/settings.routes";
 import { auditRouter } from "../modules/audit/audit.routes";
 import { notificationsRouter } from "../modules/notifications/notifications.routes";
+import { legalRouter, legalAdminRouter } from "../modules/legal/legal.routes";
 
 export const apiRouter = Router();
 
@@ -25,3 +26,5 @@ apiRouter.use("/wallet", walletRouter);
 apiRouter.use("/settings", settingsRouter);
 apiRouter.use("/admin/audit-logs", auditRouter);
 apiRouter.use("/notifications", notificationsRouter);
+apiRouter.use("/legal", legalRouter);
+apiRouter.use("/admin/legal", legalAdminRouter);
