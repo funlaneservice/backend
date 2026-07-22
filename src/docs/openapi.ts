@@ -400,7 +400,14 @@ export const openapiDocument = {
           id: { type: "string", format: "uuid" },
           type: {
             type: "string",
-            enum: ["OPTIONS_SENT", "REQUEST_APPROVED", "REQUEST_REJECTED", "TICKET_COMPLETED", "WALLET_TOPUP"],
+            enum: [
+              "OPTIONS_SENT",
+              "REQUEST_APPROVED",
+              "REQUEST_REJECTED",
+              "TICKET_COMPLETED",
+              "WALLET_TOPUP",
+              "NEW_REQUEST_CREATED",
+            ],
           },
           title: { type: "string" },
           message: { type: "string" },

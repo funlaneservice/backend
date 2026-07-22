@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma";
 import { sendMailSafely } from "../../lib/mailer";
 import { ApiError } from "../../utils/ApiError";
 import {
+  sendNewRequestCreatedEmail,
   sendOptionsSentEmail,
   sendRequestApprovedEmail,
   sendRequestRejectedEmail,
@@ -84,6 +85,29 @@ export async function notifyTicketCompleted(requestId: string, clientId: string)
     message: "Your ticket has been issued. View your booking to download it.",
     requestId,
   });
+}
+
+// Fans out to every agent (regardless of ACTIVE/SUSPENDED status) since a suspended
+// agent's reassignment eligibility isn't this hook's concern — it just announces the
+// request landed in the shared queue. Per-recipient tasks run via allSettled so one
+// agent's failed email/DB write doesn't stop the others from being notified.
+export async function notifyNewRequestCreated(requestId: string, origin: string, destination: string): Promise<void> {
+  try {
+    const agents = await prisma.user.findMany({ where: { role: "AGENT" } });
+    const tasks = agents.flatMap((agent) => [
+      sendMailSafely(() => sendNewRequestCreatedEmail(agent.email, agent.name, origin, destination)),
+      createInAppNotification(
+        agent.id,
+        "NEW_REQUEST_CREATED",
+        "New travel request in the queue",
+        `A new request (${origin} → ${destination}) was submitted and is unclaimed.`,
+        requestId
+      ),
+    ]);
+    await Promise.allSettled(tasks);
+  } catch (err) {
+    console.error("[notifications] failed to notify agents of new request:", err);
+  }
 }
 
 // No email counterpart yet — in-app only.

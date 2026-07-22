@@ -72,6 +72,7 @@ enum NotificationType {
   REQUEST_REJECTED
   TICKET_COMPLETED
   WALLET_TOPUP
+  NEW_REQUEST_CREATED
 }
 
 enum LegalDocumentType {

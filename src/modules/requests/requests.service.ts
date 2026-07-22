@@ -258,6 +258,8 @@ export async function createRequest(
     ...ctx,
   });
 
+  void notificationsService.notifyNewRequestCreated(request.id, request.origin, request.destination);
+
   return toRequestView(request);
 }
 

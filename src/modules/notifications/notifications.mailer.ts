@@ -59,3 +59,21 @@ export async function sendTicketCompletedEmail(to: string, name: string, request
     text: `Hi ${name}, your ticket is ready: ${link}`,
   });
 }
+
+export async function sendNewRequestCreatedEmail(
+  to: string,
+  name: string,
+  origin: string,
+  destination: string
+): Promise<void> {
+  const link = `${env.frontendUrl}/agent/queue`;
+  const safeName = escapeHtml(name);
+  const safeOrigin = escapeHtml(origin);
+  const safeDestination = escapeHtml(destination);
+  await sendMail({
+    to,
+    subject: "New travel request in the queue",
+    html: `<p>Hi ${safeName},</p><p>A new travel request (${safeOrigin} → ${safeDestination}) was just submitted and is unclaimed. Claim it here:</p><p><a href="${link}">${link}</a></p>`,
+    text: `Hi ${name}, a new travel request (${origin} -> ${destination}) is unclaimed: ${link}`,
+  });
+}
