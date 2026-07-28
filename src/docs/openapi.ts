@@ -97,7 +97,11 @@ export const openapiDocument = {
     { name: "Admin", description: "Admin login and admin account creation" },
     { name: "Agent", description: "Agent login and admin-driven agent onboarding" },
     { name: "Users", description: "Admin management of all user accounts (CLIENT/AGENT/ADMIN)" },
-    { name: "Audit", description: "Security audit log of authentication and admin/user-management actions" },
+    {
+      name: "Audit",
+      description:
+        "Security audit log of authentication, admin/user-management, and travel-request/wallet lifecycle actions taken by clients, agents, and admins",
+    },
     { name: "Requests", description: "Client-submitted travel requests" },
     { name: "Wallet", description: "Client wallet balance and transaction ledger" },
     { name: "Settings", description: "Self-service profile and password management for CLIENT/AGENT accounts" },
@@ -893,7 +897,7 @@ export const openapiDocument = {
         tags: ["Audit"],
         summary: "List/search the security audit log",
         description:
-          "Requires an authenticated ADMIN. Covers auth (login/register/password reset/email verification) and admin/user-management actions (role changes, suspensions, admin/agent creation, etc.), each with actor, status, and source IP/user-agent.",
+          "Requires an authenticated ADMIN. Covers auth (login/register/password reset/email verification), admin/user-management actions (role changes, suspensions, admin/agent creation, etc.), and the travel-request pipeline (creation, claiming, options sent/approved/rejected, cancellation, ticket issuance, completion, admin overrides) plus wallet topups — each with actor (client/agent/admin), status, and source IP/user-agent.",
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: "page", in: "query", schema: { type: "integer", default: 1 } },
