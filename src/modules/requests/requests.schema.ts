@@ -43,16 +43,27 @@ export const adminListRequestsQuerySchema = z.object({
   assignedAgentId: z.string().uuid().optional(),
 });
 
-export const quoteOptionInputSchema = z.object({
-  label: z.string().min(1).max(100),
-  airline: z.string().min(1).max(100),
-  // Naira (major unit), matching every other client-facing money field — converted to
-  // kobo in requests.service.ts's addQuoteOption before it touches QuoteOption.price,
-  // which (like Wallet.balance/lockedBalance) stays kobo-denominated internally.
-  price: z.number().positive("price must be a positive number, in Naira").describe("Price in Naira"),
-  departureTime: z.coerce.date(),
-  details: z.string().max(1000).optional(),
-});
+export const quoteOptionInputSchema = z
+  .object({
+    label: z.string().min(1).max(100),
+    airline: z.string().min(1).max(100),
+    flightNumber: z.string().min(1).max(20),
+    // Naira (major unit), matching every other client-facing money field — converted to
+    // kobo in requests.service.ts's addQuoteOption before it touches QuoteOption.price,
+    // which (like Wallet.balance/lockedBalance) stays kobo-denominated internally.
+    price: z.number().positive("price must be a positive number, in Naira").describe("Price in Naira"),
+    departureTime: z.coerce.date(),
+    arrivalTime: z.coerce.date(),
+    stops: z.coerce.number().int().min(0).max(10).default(0),
+    cabinClass: budgetTierSchema,
+    baggageAllowance: z.string().max(200).optional(),
+    bookingReference: z.string().max(50).optional(),
+    details: z.string().max(1000).optional(),
+  })
+  .refine((data) => data.arrivalTime.getTime() > data.departureTime.getTime(), {
+    message: "arrivalTime must be after departureTime",
+    path: ["arrivalTime"],
+  });
 
 export const requestOptionParamSchema = z.object({
   id: z.string().uuid(),

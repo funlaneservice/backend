@@ -32,8 +32,14 @@ function toQuoteOptionView(
     id: string;
     label: string;
     airline: string;
+    flightNumber: string;
     price: number;
     departureTime: Date;
+    arrivalTime: Date;
+    stops: number;
+    cabinClass: string;
+    baggageAllowance: string | null;
+    bookingReference: string | null;
     details: string | null;
     createdAt: Date;
   },
@@ -43,8 +49,14 @@ function toQuoteOptionView(
     id: option.id,
     label: option.label,
     airline: option.airline,
+    flightNumber: option.flightNumber,
     price: koboToNaira(option.price),
     departureTime: option.departureTime,
+    arrivalTime: option.arrivalTime,
+    stops: option.stops,
+    cabinClass: option.cabinClass,
+    baggageAllowance: option.baggageAllowance,
+    bookingReference: option.bookingReference,
     details: option.details,
     createdAt: option.createdAt,
     isSelected: option.id === approvedOptionId,
@@ -84,8 +96,14 @@ async function toRequestView(request: {
     id: string;
     label: string;
     airline: string;
+    flightNumber: string;
     price: number;
     departureTime: Date;
+    arrivalTime: Date;
+    stops: number;
+    cabinClass: string;
+    baggageAllowance: string | null;
+    bookingReference: string | null;
     details: string | null;
     createdAt: Date;
   }[];
@@ -385,8 +403,14 @@ export async function addQuoteOption(
       requestId,
       label: input.label,
       airline: input.airline,
+      flightNumber: input.flightNumber,
       price: Math.round(input.price * 100),
       departureTime: input.departureTime,
+      arrivalTime: input.arrivalTime,
+      stops: input.stops,
+      cabinClass: input.cabinClass,
+      baggageAllowance: input.baggageAllowance,
+      bookingReference: input.bookingReference,
       details: input.details,
     },
   });
